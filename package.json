@@ -1,0 +1,10 @@
+{
+  "name": "btd_clone_preview",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "node -e \"const h=require('http'),f=require('fs');h.createServer((_,r)=>{r.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});r.end(f.readFileSync('index.html'));}).listen(3000,'0.0.0.0');\"",
+    "build": "node -e \"console.log('Rust + Bevy 0.15 project: build via cargo apk build --release --target aarch64-linux-android')\"",
+    "lint": "node -e \"console.log('Rust project: use cargo check / clippy')\""
+  }
+}
