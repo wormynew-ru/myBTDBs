@@ -1,0 +1,42 @@
+[package]
+name = "btd_clone"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "btd_clone"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+bevy = { version = "0.15", default-features = false, features = [
+    "android-game-activity",
+    "bevy_asset",
+    "bevy_render",
+    "bevy_sprite",
+    "bevy_text",
+    "bevy_ui",
+    "multi_threaded",
+    "png",
+    "default_font",
+] }
+
+# Настройки для cargo-apk (горизонтальный экран и имя приложения)
+[package.metadata.android]
+package = "com.local.btdclone"
+build_targets = ["aarch64-linux-android"]
+apk_name = "BTD_Clone"
+
+[package.metadata.android.sdk]
+min_sdk_version = 24
+target_sdk_version = 34
+
+[[package.metadata.android.activity]]
+name = "android.app.NativeActivity"
+orientation = "landscape"
+
+# Оптимизация размера и скорости для слабых устройств
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
