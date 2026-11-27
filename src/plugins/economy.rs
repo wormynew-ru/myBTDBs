@@ -2,10 +2,12 @@ use bevy::prelude::*;
 
 use crate::core::events::{BloonLeakedEvent, BloonPoppedEvent, SendBloonPackEvent};
 use crate::core::state::{GameState, MatchResult, MatchSettings};
-use crate::core::types::{SideEconomy, SidesResource};
+use crate::core::types::{Side, SideEconomy, SidesResource, TowerType};
 use crate::data::bloons_cfg::{SEND_PACKS, WAVE_DURATION_SECS};
+use crate::data::tower_stats::{compute_effective_stats, discounted_send_cost};
 use crate::data::towers_cfg::{ECO_INTERVAL_SECS, STARTING_CASH, STARTING_ECO, STARTING_LIVES};
 use crate::plugins::bloons::{QueuedSendPack, SendPackQueue};
+use crate::plugins::towers::Tower;
 
 pub struct EconomyPlugin;
 
@@ -52,6 +54,7 @@ fn eco_payout_system(
     time: Res<Time>,
     settings: Res<MatchSettings>,
     mut sides: ResMut<SidesResource>,
+    towers: Query<(&Side, &Tower)>,
 ) {
     if settings.paused {
         return;
@@ -60,14 +63,27 @@ fn eco_payout_system(
     sides.eco_timer -= dt;
     if sides.eco_timer <= 0.0 {
         sides.eco_timer += ECO_INTERVAL_SECS;
-        sides.player.cash += sides.player.eco;
-        sides.bot.cash += sides.bot.eco;
+        let mut p_bonus = 0;
+        let mut b_bonus = 0;
+        for (side, tower) in &towers {
+            if tower.tower_type == TowerType::Farm && tower.path2 > 0 {
+                let bonus = compute_effective_stats(tower.tower_type, tower.path1, tower.path2)
+                    .farm_eco_bonus;
+                match side {
+                    Side::Player => p_bonus += bonus,
+                    Side::Bot => b_bonus += bonus,
+                }
+            }
+        }
+        sides.player.cash += sides.player.eco + p_bonus;
+        sides.bot.cash += sides.bot.eco + b_bonus;
     }
 }
 
 fn handle_send_bloon_packs(
     mut sides: ResMut<SidesResource>,
     mut send_q: ResMut<SendPackQueue>,
+    towers: Query<(&Side, &Tower)>,
     mut reader: EventReader<SendBloonPackEvent>,
 ) {
     const MAX_QUEUED_PACKS: usize = 12;
@@ -76,16 +92,24 @@ fn handle_send_bloon_packs(
         let Some(pack) = SEND_PACKS.get(ev.pack_index) else {
             continue;
         };
+        let discount: f32 = towers
+            .iter()
+            .filter(|(s, t)| **s == ev.sender && t.tower_type == TowerType::Farm && t.path2 >= 2)
+            .map(|(_, t)| compute_effective_stats(t.tower_type, t.path1, t.path2).farm_send_discount)
+            .sum::<f32>()
+            .min(0.20);
+        let cost = discounted_send_cost(pack.cost, discount);
+
         let target = ev.sender.opponent();
         if sides.wave < pack.unlock_wave
-            || sides.get(ev.sender).cash < pack.cost
+            || sides.get(ev.sender).cash < cost
             || send_q.count_for(target) >= MAX_QUEUED_PACKS
         {
             continue;
         }
         {
             let econ = sides.get_mut(ev.sender);
-            econ.cash -= pack.cost;
+            econ.cash -= cost;
             econ.eco = (econ.eco + pack.eco_gain).max(0);
         }
 

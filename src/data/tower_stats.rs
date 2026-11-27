@@ -79,6 +79,13 @@ pub struct EffectiveStats {
     pub summon_interval: f32,
     pub summon_count: u8,
     pub crook_tier: u8,
+    // Farm stats
+    pub farm_cash: i32,
+    pub farm_interval: f32,
+    pub farm_eco_bonus: i32,
+    pub farm_send_discount: f32,
+    pub farm_dividend_cash: i32,
+    pub farm_dividend_interval: f32,
 }
 
 pub fn compute_effective_stats(
@@ -134,6 +141,12 @@ pub fn compute_effective_stats(
         summon_interval: 14.0,
         summon_count: 1,
         crook_tier: 0,
+        farm_cash: 45,
+        farm_interval: 4.5,
+        farm_eco_bonus: 0,
+        farm_send_discount: 0.0,
+        farm_dividend_cash: 0,
+        farm_dividend_interval: 15.0,
     };
 
     match tower_type {
@@ -244,9 +257,28 @@ pub fn compute_effective_stats(
             if path2 >= 3 { s.summon_count = 2; s.crook_tier = 2; }
             if path2 >= 4 { s.summon_interval = 9.0; s.summon_count = 1; s.crook_tier = 3; }
         }
+        TowerType::Farm => {
+            if path1 >= 1 { s.farm_interval = 3.5; s.farm_cash = 55; }
+            if path1 >= 2 { s.farm_cash = 95; }
+            if path1 >= 3 { s.farm_interval = 3.2; s.farm_cash = 175; }
+            if path1 >= 4 { s.farm_interval = 3.0; s.farm_cash = 340; }
+            if path2 >= 1 { s.farm_eco_bonus = 12; }
+            if path2 >= 2 { s.farm_eco_bonus = 28; s.farm_send_discount = 0.05; }
+            if path2 >= 3 { s.farm_eco_bonus = 60; }
+            if path2 >= 4 {
+                s.farm_eco_bonus = 135;
+                s.farm_dividend_cash = 400;
+                s.farm_dividend_interval = 15.0;
+            }
+        }
     }
 
     s
+}
+
+pub fn discounted_send_cost(base_cost: i32, discount: f32) -> i32 {
+    let clamped = discount.clamp(0.0, 0.20);
+    ((base_cost as f32) * (1.0 - clamped)).round() as i32
 }
 
 pub fn apply_village_buff(mut stats: EffectiveStats, buff: VillageBuff) -> EffectiveStats {

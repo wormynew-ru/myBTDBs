@@ -58,8 +58,8 @@ pub fn crook_boss_spawn_system(
 
         let (kind, hp, speed, gun_cd, gun_dmg, gun_pierce, gun_range, exp_dmg, exp_rad, size, tint) =
             match stats.crook_tier {
-                0 => (UnitKind::Crook, 24, 78.0, 0.65, 1, 1, 110.0, 0, 0.0, 23.0, Color::WHITE),
-                1 => (UnitKind::Crook, 45, 82.0, 0.48, 2, 1, 120.0, 0, 0.0, 24.0, Color::srgb(0.92, 0.92, 0.96)),
+                0 => (UnitKind::Crook, 24, 78.0, 0.65, 1, 1, 165.0, 0, 0.0, 23.0, Color::WHITE),
+                1 => (UnitKind::Crook, 45, 82.0, 0.48, 2, 1, 180.0, 0, 0.0, 24.0, Color::srgb(0.92, 0.92, 0.96)),
                 2 => (
                     UnitKind::TommyGoon,
                     75,
@@ -67,7 +67,7 @@ pub fn crook_boss_spawn_system(
                     0.20,
                     2,
                     2,
-                    130.0,
+                    195.0,
                     0,
                     0.0,
                     25.0,
@@ -80,7 +80,7 @@ pub fn crook_boss_spawn_system(
                     0.14,
                     2,
                     3,
-                    145.0,
+                    217.5,
                     12,
                     56.0,
                     28.0,

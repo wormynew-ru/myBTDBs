@@ -10,13 +10,13 @@ use crate::core::state::{Difficulty, GameState, MatchSettings};
 use crate::core::types::{Position, Side, SidesResource, TowerType};
 use crate::data::bloons_cfg::SEND_PACKS;
 use crate::data::maps_cfg::waypoints_for_side;
-use crate::data::tower_stats::{apply_village_buff, compute_effective_stats};
+use crate::data::tower_stats::{apply_village_buff, compute_effective_stats, discounted_send_cost};
 use crate::data::towers_cfg::tower_cfg;
 use crate::plugins::bloons::Bloon;
 use crate::plugins::towers::{ChipperState, Tower, TowerBuff};
 use crate::utils::path_total_length;
 
-use ai_spots::{find_bot_spot, find_commander_spot};
+use ai_spots::{find_bot_spot, find_commander_spot, find_farm_spot};
 
 pub struct AiPlugin;
 
@@ -138,6 +138,13 @@ fn utility_ai_system(
     let bot_has_cmdr = bot_towers.iter().any(|(_, t, _, _)| t.tower_type == TowerType::Commander);
     let bot_has_base = bot_towers.iter().any(|(_, t, _, _)| t.tower_type == TowerType::MilitaryBase);
     let bot_has_crook = bot_towers.iter().any(|(_, t, _, _)| t.tower_type == TowerType::CrookBoss);
+    let bot_farms = bot_towers.iter().filter(|(_, t, _, _)| t.tower_type == TowerType::Farm).count();
+    let bot_discount: f32 = bot_towers
+        .iter()
+        .filter(|(_, t, _, _)| t.tower_type == TowerType::Farm && t.path2 >= 2)
+        .map(|(_, _, s, _)| s.farm_send_discount)
+        .sum::<f32>()
+        .min(0.20);
 
     // 1. Starter defense
     if bot_towers.is_empty() && bot_cash >= tower_cfg(TowerType::DartMonkey).cost {
@@ -198,6 +205,22 @@ fn utility_ai_system(
         if has_lead_threat { return; }
     }
 
+    // 3.5 Early/mid-game Banana Farm investment when no breakthrough threat
+    let target_farms = if settings.difficulty == Difficulty::Easy { 1 } else { 2 };
+    let want_second_farm = bot_farms == 0 || (bot_towers.len() >= 3 && sides.wave >= 4);
+    if sides.wave <= 14
+        && bot_farms < target_farms
+        && want_second_farm
+        && max_threat < 0.45
+        && !bot_towers.is_empty()
+        && bot_cash >= tower_cfg(TowerType::Farm).cost
+    {
+        if let Some(pos) = find_farm_spot(settings.map_id, &bot_positions) {
+            build_writer.send(BuildTowerEvent { side: Side::Bot, tower_type: TowerType::Farm, pos });
+            return;
+        }
+    }
+
     // 4. Versatile Crook Boss (against groups / camo), Commander, MilitaryBase
     if !bot_has_crook
         && (bot_bloon_count >= 8 || bot_towers.len() >= 1)
@@ -227,7 +250,10 @@ fn utility_ai_system(
     };
 
     if max_threat > 0.52 || bot_towers.len() < 2 {
-        if let Some((entity, tower, _, _)) = bot_towers.iter().find(|(_, t, _, _)| can_upgrade(t)) {
+        if let Some((entity, tower, _, _)) = bot_towers
+            .iter()
+            .find(|(_, t, _, _)| t.tower_type != TowerType::Farm && can_upgrade(t))
+        {
             let branch = pick_upgrade_branch(tower, !bot_has_camo, has_lead_threat || !bot_has_lead);
             upgrade_writer.send(UpgradeTowerEvent { side: Side::Bot, tower_entity: *entity, branch });
             return;
@@ -260,19 +286,19 @@ fn utility_ai_system(
 
     // 5. Rush Player when weak against Camo/Lead or late game
     if settings.difficulty != Difficulty::Easy && sides.wave >= 4 && max_threat < 0.45 {
-        if !player_has_camo && bot_cash >= SEND_PACKS[4].cost {
+        if !player_has_camo && bot_cash >= discounted_send_cost(SEND_PACKS[4].cost, bot_discount) {
             send_writer.send(SendBloonPackEvent { sender: Side::Bot, pack_index: 4 });
             return;
         }
-        if sides.wave >= 5 && !player_has_lead && bot_cash >= SEND_PACKS[5].cost {
+        if sides.wave >= 5 && !player_has_lead && bot_cash >= discounted_send_cost(SEND_PACKS[5].cost, bot_discount) {
             send_writer.send(SendBloonPackEvent { sender: Side::Bot, pack_index: 5 });
             return;
         }
-        if settings.difficulty == Difficulty::Hard && sides.wave >= 11 && bot_cash >= SEND_PACKS[10].cost {
+        if settings.difficulty == Difficulty::Hard && sides.wave >= 11 && bot_cash >= discounted_send_cost(SEND_PACKS[10].cost, bot_discount) {
             send_writer.send(SendBloonPackEvent { sender: Side::Bot, pack_index: 10 });
             return;
         }
-        if settings.difficulty == Difficulty::Hard && sides.wave >= 8 && bot_cash >= SEND_PACKS[7].cost {
+        if settings.difficulty == Difficulty::Hard && sides.wave >= 8 && bot_cash >= discounted_send_cost(SEND_PACKS[7].cost, bot_discount) {
             send_writer.send(SendBloonPackEvent { sender: Side::Bot, pack_index: 7 });
             return;
         }
@@ -282,7 +308,11 @@ fn utility_ai_system(
     if max_threat < 0.42 {
         if let Some((idx, _)) = SEND_PACKS
             .iter().enumerate().rev()
-            .find(|(_, p)| sides.wave >= p.unlock_wave && p.eco_gain > 0 && bot_cash >= p.cost)
+            .find(|(_, p)| {
+                sides.wave >= p.unlock_wave
+                    && p.eco_gain > 0
+                    && bot_cash >= discounted_send_cost(p.cost, bot_discount)
+            })
         {
             send_writer.send(SendBloonPackEvent { sender: Side::Bot, pack_index: idx });
             return;

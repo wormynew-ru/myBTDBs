@@ -243,9 +243,13 @@ fn sync_upgrade_panel(
     let cfg = tower_cfg(tower.tower_type);
 
     if let Ok(mut t) = title_q.get_single_mut() {
-        let camo_tag = if buff.0.camo { " [CAMO]" } else { "" };
-        let lead_tag = if buff.0.lead { " [LEAD]" } else { "" };
-        **t = format!("{} | Pops: {}{}{}", cfg.name, tower.pops, camo_tag, lead_tag);
+        if tower.tower_type == TowerType::Farm {
+            **t = format!("{} | Earned: ${}", cfg.name, tower.pops);
+        } else {
+            let camo_tag = if buff.0.camo { " [CAMO]" } else { "" };
+            let lead_tag = if buff.0.lead { " [LEAD]" } else { "" };
+            **t = format!("{} | Pops: {}{}{}", cfg.name, tower.pops, camo_tag, lead_tag);
+        }
     }
     if let Ok(mut t) = p1_q.get_single_mut() {
         let max_t = cfg.path1.len();

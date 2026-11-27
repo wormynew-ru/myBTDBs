@@ -21,7 +21,8 @@
 - `src/data/mod.rs` — реэкспорт конфигов.
 - `src/data/bloons_cfg.rs` — характеристики слоёв и весов шаров (`Red`..`ZOMG`), наборов отправки (`SEND_PACKS`).
 - `src/data/towers_cfg.rs` — характеристики башен, цены и дерево апгрейдов (2×3 / 2×4).
-- `src/data/tower_stats.rs` — расчёт эффективных статов и баффов от `Monkey Village`.
+- `src/data/towers_cfg_extra.rs` — конфиги поздних и экономических башен (`Commander`, `MilitaryBase`, `CrookBoss`, `Farm`).
+- `src/data/tower_stats.rs` — расчёт эффективных статов, баффов от `Monkey Village` и скидок от `Farm`.
 - `src/data/maps_cfg.rs` — координаты маршрутов (waypoints) для обеих половин экрана.
 
 ## Игровые домены (`src/plugins/`)
@@ -36,16 +37,17 @@
 - `src/plugins/towers/combat_proj.rs` — полёт снарядов, коллизии, бонусный урон по `Ceramic`/`MOAB` и доход `+$15` за 10 слоёв для `Golden Boss`.
 - `src/plugins/towers/commander.rs` — комбинированная аура Деревни и Командира, периодический `Call to Arms` и 2 телохранителя.
 - `src/plugins/towers/crook_boss.rs` — призыв головорезов Босса Мафии (`Crook`, `TommyGoon`, `MafiaEnforcer`) с выхода маршрута.
+- `src/plugins/towers/farm.rs` — тики сбора урожая Фермы (`FarmState`), дивиденды `0-4` и всплывающий зелёный текст дохода (`FarmIncomeFx`).
 - `src/plugins/towers/military_base.rs` — спавн боевой техники `MilitaryBase` с выхода маршрута и авиаудар `0-4`.
-- `src/plugins/towers/units.rs` — логика юнитов `PathUnit` на дороге (движение, остановка/замедление головорезов при виде шаров, стрельба, гранаты и таран).
+- `src/plugins/towers/units.rs` — логика юнитов `PathUnit` на дороге (движение, полная остановка Stop-and-Shoot при стрельбе, поворот к цели, гранаты и таран).
 - `src/plugins/towers/units_fx.rs` — послойный урон техники/головорезов (с учётом дохода `Golden Boss`) и визуальные эффекты взрывов `UnitExplosionFx`.
 - `src/plugins/towers/chipper.rs` — конечный автомат Шаромолки (`Scanning -> Pulling -> Shredding -> Ejecting`), вибрация и спавн частиц.
 - `src/plugins/towers/chipper_fx.rs` — активная способность `Supa-Vac` и обновление частиц выхлопа.
 - `src/plugins/towers/spikes.rs` — генерация кучек шипов Фабрики шипов (`SpikePile`), коллизии с шарами, взрывы `4-0 Spiked Mines` и ковёр `0-4 Spike Storm`.
 - `src/plugins/towers/spikes_fx.rs` — визуальный эффект огненного взрыва `Spiked Mines` и послойное снятие урона шипами.
-- `src/plugins/economy.rs` — таймер выплат `Eco`, постановка отправок в очередь, учёт жизней и конца матча.
-- `src/plugins/ai.rs` — Utility AI бота (оценка угроз, строительство `CrookBoss` против Camo/групп, Командира, Военной базы, Фабрики шипов, апгрейды, экономика и раши).
-- `src/plugins/ai_spots.rs` — оценка и подбор оптимальных позиций для башен бота.
+- `src/plugins/economy.rs` — таймер выплат `Eco` (с учётом пассивного бонуса Ферм), скидки на отправку шаров, постановка в очередь, учёт жизней и конца матча.
+- `src/plugins/ai.rs` — Utility AI бота (оценка угроз, строительство 1–2 Ферм в начале/середине игры, `CrookBoss`, Командир, Военная база, Фабрика шипов, апгрейды, экономика и раши).
+- `src/plugins/ai_spots.rs` — оценка и подбор оптимальных позиций для боевых башен и Ферм бота.
 
 ## Интерфейс (`src/ui/`)
 - `src/ui/mod.rs` — реэкспорт UI-плагина.

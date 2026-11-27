@@ -37,6 +37,7 @@ pub struct SpriteAssets {
     pub tower_military_base: Handle<Image>,
     pub tower_crook_boss: Handle<Image>,
     pub tower_crook_boss_gold: Handle<Image>,
+    pub tower_farm: Handle<Image>,
 
     pub unit_jeep: Handle<Image>,
     pub unit_tank: Handle<Image>,
@@ -91,6 +92,7 @@ impl SpriteAssets {
                     self.tower_crook_boss.clone()
                 }
             }
+            TowerType::Farm => self.tower_farm.clone(),
             TowerType::Bloonchipper => {
                 if path1 >= 4 {
                     self.chipper_p1_4.clone()

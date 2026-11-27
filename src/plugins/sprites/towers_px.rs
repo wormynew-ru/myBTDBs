@@ -306,4 +306,29 @@ pub fn populate_tower_and_proj_sprites(
         ('L', [255, 255, 255, 255]),
         ('M', [148, 163, 184, 255]),
     ]);
+
+    assets.tower_farm = make_tex(images, [
+        "................",
+        ".....DDDDDD.....",
+        "...DDGGGGGGDD...",
+        "..DGGYYGGYYGGD..",
+        ".DGGYYYGGYYYGGD.",
+        ".DGGGGSSSSGGGGD.",
+        ".DGGSSGGGGSSGGD.",
+        ".DGYYGGGGGGYYGD.",
+        ".DGGGSSGGSSGGGD.",
+        "..DGGSSSSSSGGD..",
+        "..DBBBBBBBBBBD..",
+        "..DBBBBBBBBBBD..",
+        "..DB.DBBBB.DBD..",
+        "..DB.DBBBB.DBD..",
+        "..DDDDDDDDDDDD..",
+        "................",
+    ], &[
+        ('D', d),
+        ('G', [34, 197, 94, 255]),
+        ('S', [21, 128, 61, 255]),
+        ('Y', [250, 204, 21, 255]),
+        ('B', [133, 77, 14, 255]),
+    ]);
 }

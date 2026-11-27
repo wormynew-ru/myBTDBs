@@ -85,3 +85,31 @@ pub fn find_commander_spot(map_id: MapId, existing_bot_towers: &[Vec2]) -> Optio
     }
     best.map(|(p, _)| p)
 }
+
+pub fn find_farm_spot(map_id: MapId, existing_bot_towers: &[Vec2]) -> Option<Vec2> {
+    let wps = waypoints_for_side(map_id, Side::Bot);
+    let mut best: Option<(Vec2, f32)> = None;
+    let mut gx = DIVIDER_HALF + 42.0;
+    while gx <= HALF_W - 40.0 {
+        let mut gy = ARENA_BOTTOM + 42.0;
+        while gy <= ARENA_TOP - 42.0 {
+            let candidate = Vec2::new(gx, gy);
+            if is_valid_tower_spot(candidate, Side::Bot, &wps, existing_bot_towers) {
+                let mut min_road_dist = f32::MAX;
+                for pair in wps.windows(2) {
+                    let seg = pair[1] - pair[0];
+                    let len_sq = seg.length_squared().max(0.001);
+                    let t = ((candidate - pair[0]).dot(seg) / len_sq).clamp(0.0, 1.0);
+                    let proj = pair[0] + seg * t;
+                    min_road_dist = min_road_dist.min(candidate.distance(proj));
+                }
+                if best.map_or(true, |(_, bd)| min_road_dist > bd) {
+                    best = Some((candidate, min_road_dist));
+                }
+            }
+            gy += 32.0;
+        }
+        gx += 32.0;
+    }
+    best.map(|(p, _)| p)
+}

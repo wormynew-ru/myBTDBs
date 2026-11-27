@@ -63,6 +63,7 @@ pub enum TowerType {
     Commander,
     MilitaryBase,
     CrookBoss,
+    Farm,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

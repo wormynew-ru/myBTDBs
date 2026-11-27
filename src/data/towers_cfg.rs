@@ -2,6 +2,8 @@ use bevy::prelude::*;
 
 use crate::core::types::TowerType;
 
+mod towers_cfg_extra;
+
 pub const STARTING_LIVES: i32 = 150;
 pub const STARTING_CASH: i32 = 650;
 pub const STARTING_ECO: i32 = 250;
@@ -36,7 +38,7 @@ pub struct TowerCfg {
     pub path2: &'static [UpgradeCfg],
 }
 
-pub const ALL_TOWERS: [TowerType; 10] = [
+pub const ALL_TOWERS: [TowerType; 11] = [
     TowerType::DartMonkey,
     TowerType::Cannon,
     TowerType::IceTower,
@@ -47,6 +49,7 @@ pub const ALL_TOWERS: [TowerType; 10] = [
     TowerType::Commander,
     TowerType::MilitaryBase,
     TowerType::CrookBoss,
+    TowerType::Farm,
 ];
 
 pub fn tower_cfg(tower_type: TowerType) -> TowerCfg {
@@ -244,92 +247,9 @@ pub fn tower_cfg(tower_type: TowerType) -> TowerCfg {
                 UpgradeCfg { name: "Spike Storm", cost: 2600 },
             ],
         },
-        TowerType::Commander => TowerCfg {
-            tower_type,
-            name: "Commander",
-            short_name: "Cmdr",
-            cost: 600,
-            range: 130.0,
-            fire_rate: 1.35,
-            damage: 1,
-            pierce: 2,
-            proj_speed: 540.0,
-            splash_radius: 0.0,
-            can_hit_camo: false,
-            can_pop_lead: false,
-            slow_factor: 1.0,
-            slow_duration: 0.0,
-            color: Color::srgb(0.11, 0.31, 0.85),
-            path1: &[
-                UpgradeCfg { name: "Wide Orders", cost: 260 },
-                UpgradeCfg { name: "Battle Rhythm", cost: 520 },
-                UpgradeCfg { name: "Armor Pierce", cost: 1050 },
-                UpgradeCfg { name: "Call to Arms", cost: 2500 },
-            ],
-            path2: &[
-                UpgradeCfg { name: "Rapid Pistol", cost: 230 },
-                UpgradeCfg { name: "Tactical Visor", cost: 380 },
-                UpgradeCfg { name: "Bodyguards", cost: 980 },
-                UpgradeCfg { name: "Elite Guard", cost: 2200 },
-            ],
-        },
-        TowerType::MilitaryBase => TowerCfg {
-            tower_type,
-            name: "Military Base",
-            short_name: "MilBase",
-            cost: 650,
-            range: 95.0,
-            fire_rate: 1.0 / 12.0,
-            damage: 35,
-            pierce: 1,
-            proj_speed: 95.0,
-            splash_radius: 42.0,
-            can_hit_camo: true,
-            can_pop_lead: false,
-            slow_factor: 1.0,
-            slow_duration: 0.0,
-            color: Color::srgb(0.25, 0.38, 0.07),
-            path1: &[
-                UpgradeCfg { name: "Armored Car", cost: 340 },
-                UpgradeCfg { name: "Heavy APC", cost: 780 },
-                UpgradeCfg { name: "Battle Tank", cost: 1850 },
-                UpgradeCfg { name: "Railgun Tank", cost: 4400 },
-            ],
-            path2: &[
-                UpgradeCfg { name: "Quick Dispatch", cost: 280 },
-                UpgradeCfg { name: "Turbo Engines", cost: 540 },
-                UpgradeCfg { name: "Heavy Convoy", cost: 1150 },
-                UpgradeCfg { name: "Airstrike", cost: 3200 },
-            ],
-        },
-        TowerType::CrookBoss => TowerCfg {
-            tower_type,
-            name: "Crook Boss",
-            short_name: "Crook",
-            cost: 550,
-            range: 105.0,
-            fire_rate: 1.15,
-            damage: 1,
-            pierce: 1,
-            proj_speed: 540.0,
-            splash_radius: 0.0,
-            can_hit_camo: false,
-            can_pop_lead: false,
-            slow_factor: 1.0,
-            slow_duration: 0.0,
-            color: Color::srgb(0.16, 0.16, 0.20),
-            path1: &[
-                UpgradeCfg { name: "Quick Trigger", cost: 220 },
-                UpgradeCfg { name: "Tommy Gun", cost: 480 },
-                UpgradeCfg { name: "Armor Pierce", cost: 950 },
-                UpgradeCfg { name: "Golden Boss", cost: 2800 },
-            ],
-            path2: &[
-                UpgradeCfg { name: "Camo Shades", cost: 200 },
-                UpgradeCfg { name: "Syndicate", cost: 380 },
-                UpgradeCfg { name: "Tommy Goons", cost: 1150 },
-                UpgradeCfg { name: "Godfather", cost: 3400 },
-            ],
-        },
+        TowerType::Commander
+        | TowerType::MilitaryBase
+        | TowerType::CrookBoss
+        | TowerType::Farm => towers_cfg_extra::extra_tower_cfg(tower_type),
     }
 }

@@ -4,6 +4,7 @@ mod combat;
 mod combat_proj;
 mod commander;
 mod crook_boss;
+mod farm;
 mod military_base;
 mod spikes;
 mod spikes_fx;
@@ -33,6 +34,7 @@ use commander::{
     update_tower_buffs_system, CommanderState,
 };
 use crook_boss::{crook_boss_spawn_system, CrookBossState};
+use farm::{farm_income_fx_system, farm_tick_system, FarmState};
 use military_base::{military_base_spawn_system, MilitaryBaseState};
 use spikes::{spike_factory_produce_system, spike_piles_system, SpikeFactoryState};
 use spikes_fx::spike_explosion_fx_system;
@@ -71,6 +73,8 @@ impl Plugin for TowersPlugin {
                     spike_factory_produce_system,
                     spike_piles_system,
                     spike_explosion_fx_system,
+                    farm_tick_system,
+                    farm_income_fx_system,
                 )
                     .chain(),
             )
@@ -176,6 +180,8 @@ fn handle_build_tower(
             entity_cmds.insert(MilitaryBaseState::default());
         } else if ev.tower_type == TowerType::CrookBoss {
             entity_cmds.insert(CrookBossState::default());
+        } else if ev.tower_type == TowerType::Farm {
+            entity_cmds.insert(FarmState::default());
         }
 
         let entity = entity_cmds.id();

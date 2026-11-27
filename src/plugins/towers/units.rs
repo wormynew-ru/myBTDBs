@@ -86,34 +86,25 @@ pub fn path_units_system(
             }
         }
 
-        let move_mult = if unit.kind.is_crook() {
-            match target {
-                Some((_, d)) if d <= unit.gun_range * 0.65 => 0.10,
-                Some(_) => 0.40,
-                None => 1.0,
-            }
-        } else {
-            1.0
-        };
-
-        unit.path_progress -= unit.speed * move_mult * dt;
-        if unit.path_progress <= 0.0 {
-            commands.entity(u_e).despawn_recursive();
-            continue;
-        }
-
-        let wps = if *u_side == Side::Player { &player_wps } else { &bot_wps };
-        let (next_pos, _) = sample_path(wps, unit.path_progress);
-        let move_dir = next_pos - u_pos.0;
-        if let Some((tp, _)) = target.filter(|_| unit.kind.is_crook()) {
-            let aim = (tp - next_pos).normalize_or(Vec2::X);
+        if let Some((tp, _)) = target {
+            let aim = (tp - u_pos.0).normalize_or(Vec2::X);
             u_tf.rotation = Quat::from_rotation_z(aim.y.atan2(aim.x));
-        } else if move_dir.length_squared() > 0.01 {
-            u_tf.rotation = Quat::from_rotation_z(move_dir.y.atan2(move_dir.x));
+        } else {
+            unit.path_progress -= unit.speed * dt;
+            if unit.path_progress <= 0.0 {
+                commands.entity(u_e).despawn_recursive();
+                continue;
+            }
+            let wps = if *u_side == Side::Player { &player_wps } else { &bot_wps };
+            let (next_pos, _) = sample_path(wps, unit.path_progress);
+            let move_dir = next_pos - u_pos.0;
+            if move_dir.length_squared() > 0.01 {
+                u_tf.rotation = Quat::from_rotation_z(move_dir.y.atan2(move_dir.x));
+            }
+            u_pos.0 = next_pos;
+            u_tf.translation.x = next_pos.x;
+            u_tf.translation.y = next_pos.y;
         }
-        u_pos.0 = next_pos;
-        u_tf.translation.x = next_pos.x;
-        u_tf.translation.y = next_pos.y;
 
         if unit.gun_cd > 0.0 {
             unit.fire_cooldown -= dt;

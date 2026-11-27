@@ -1,7 +1,9 @@
 use bevy::prelude::*;
 
 use crate::core::state::{GameState, MatchSettings};
-use crate::core::types::SidesResource;
+use crate::core::types::{Side, SidesResource, TowerType};
+use crate::data::tower_stats::compute_effective_stats;
+use crate::plugins::towers::Tower;
 
 pub struct HudPlugin;
 
@@ -135,16 +137,33 @@ fn update_hud_texts(
     sides: Res<SidesResource>,
     settings: Res<MatchSettings>,
     send_q: Res<crate::plugins::bloons::SendPackQueue>,
+    towers: Query<(&Side, &Tower)>,
     mut player_q: Query<&mut Text, (With<PlayerHudText>, Without<WaveHudText>, Without<BotHudText>)>,
     mut wave_q: Query<&mut Text, (With<WaveHudText>, Without<PlayerHudText>, Without<BotHudText>)>,
     mut bot_q: Query<&mut Text, (With<BotHudText>, Without<PlayerHudText>, Without<WaveHudText>)>,
 ) {
+    let mut p_farm_eco = 0;
+    let mut b_farm_eco = 0;
+    for (side, tower) in &towers {
+        if tower.tower_type == TowerType::Farm && tower.path2 > 0 {
+            let bonus = compute_effective_stats(tower.tower_type, tower.path1, tower.path2)
+                .farm_eco_bonus;
+            match side {
+                Side::Player => p_farm_eco += bonus,
+                Side::Bot => b_farm_eco += bonus,
+            }
+        }
+    }
+
     if let Ok(mut text) = player_q.get_single_mut() {
-        let q_bot = send_q.count_for(crate::core::types::Side::Bot);
+        let q_bot = send_q.count_for(Side::Bot);
         let q_tag = if q_bot > 0 { format!(" | Q:{}", q_bot) } else { String::new() };
         **text = format!(
             "YOU | HP: {} | ${} | Eco: {}{}",
-            sides.player.lives, sides.player.cash, sides.player.eco, q_tag
+            sides.player.lives,
+            sides.player.cash,
+            sides.player.eco + p_farm_eco,
+            q_tag
         );
     }
     if let Ok(mut text) = wave_q.get_single_mut() {
@@ -155,11 +174,14 @@ fn update_hud_texts(
         );
     }
     if let Ok(mut text) = bot_q.get_single_mut() {
-        let q_pl = send_q.count_for(crate::core::types::Side::Player);
+        let q_pl = send_q.count_for(Side::Player);
         let q_tag = if q_pl > 0 { format!(" | Q:{}", q_pl) } else { String::new() };
         **text = format!(
             "BOT | HP: {} | ${} | Eco: {}{}",
-            sides.bot.lives, sides.bot.cash, sides.bot.eco, q_tag
+            sides.bot.lives,
+            sides.bot.cash,
+            sides.bot.eco + b_farm_eco,
+            q_tag
         );
     }
 }

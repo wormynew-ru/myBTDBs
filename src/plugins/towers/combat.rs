@@ -70,6 +70,7 @@ pub fn tower_attack_system(
                 | TowerType::Village
                 | TowerType::SpikeFactory
                 | TowerType::MilitaryBase
+                | TowerType::Farm
         ) {
             continue;
         }
