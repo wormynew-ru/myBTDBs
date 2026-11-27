@@ -60,6 +60,9 @@ pub enum TowerType {
     Bloonchipper,
     Village,
     SpikeFactory,
+    Commander,
+    MilitaryBase,
+    CrookBoss,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

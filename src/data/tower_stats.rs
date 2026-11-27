@@ -9,6 +9,7 @@ pub struct VillageBuff {
     pub speed_mult: f32,
     pub range_mult: f32,
     pub pierce_bonus: u32,
+    pub damage_bonus: i32,
 }
 
 impl Default for VillageBuff {
@@ -19,6 +20,7 @@ impl Default for VillageBuff {
             speed_mult: 1.0,
             range_mult: 1.0,
             pierce_bonus: 0,
+            damage_bonus: 0,
         }
     }
 }
@@ -49,18 +51,34 @@ pub struct EffectiveStats {
     pub can_suck_heavy: bool,
     pub can_suck_moab: bool,
     pub has_supa_vac: bool,
-    // Village aura stats
+    // Village / Commander aura stats
     pub aura_camo: bool,
     pub aura_lead: bool,
     pub aura_speed_mult: f32,
     pub aura_range_mult: f32,
     pub aura_pierce_bonus: u32,
+    pub aura_damage_bonus: i32,
     // Spike Factory stats
     pub spike_life: f32,
     pub ceramic_bonus_damage: i32,
     pub spike_persist_waves: bool,
     pub spike_explode: bool,
     pub has_spike_storm: bool,
+    // Commander stats
+    pub has_call_to_arms: bool,
+    pub guard_count: u8,
+    pub guard_elite: bool,
+    // Military Base stats
+    pub unit_hp: i32,
+    pub unit_speed: f32,
+    pub unit_tier: u8,
+    pub has_airstrike: bool,
+    // Crook Boss stats
+    pub moab_bonus_damage: i32,
+    pub is_golden_boss: bool,
+    pub summon_interval: f32,
+    pub summon_count: u8,
+    pub crook_tier: u8,
 }
 
 pub fn compute_effective_stats(
@@ -95,14 +113,27 @@ pub fn compute_effective_stats(
         has_supa_vac: false,
         aura_camo: false,
         aura_lead: false,
-        aura_speed_mult: 1.12,
+        aura_speed_mult: if tower_type == TowerType::Commander { 1.15 } else { 1.12 },
         aura_range_mult: 1.0,
         aura_pierce_bonus: 0,
+        aura_damage_bonus: 0,
         spike_life: 35.0,
         ceramic_bonus_damage: 0,
         spike_persist_waves: false,
         spike_explode: false,
         has_spike_storm: false,
+        has_call_to_arms: false,
+        guard_count: 0,
+        guard_elite: false,
+        unit_hp: 35,
+        unit_speed: 95.0,
+        unit_tier: 0,
+        has_airstrike: false,
+        moab_bonus_damage: 0,
+        is_golden_boss: false,
+        summon_interval: 14.0,
+        summon_count: 1,
+        crook_tier: 0,
     };
 
     match tower_type {
@@ -166,6 +197,53 @@ pub fn compute_effective_stats(
             if path2 >= 3 { s.spike_life = 90.0; s.spike_persist_waves = true; }
             if path2 >= 4 { s.has_spike_storm = true; }
         }
+        TowerType::Commander => {
+            if path1 >= 1 { s.range += 30.0; s.aura_speed_mult = 1.20; }
+            if path1 >= 2 { s.range += 20.0; s.aura_speed_mult = 1.28; }
+            if path1 >= 3 { s.aura_speed_mult = 1.35; s.aura_lead = true; s.aura_damage_bonus = 1; }
+            if path1 >= 4 { s.has_call_to_arms = true; }
+            if path2 >= 1 { s.fire_rate *= 1.45; }
+            if path2 >= 2 { s.can_hit_camo = true; s.pierce += 1; }
+            if path2 >= 3 { s.guard_count = 2; }
+            if path2 >= 4 { s.guard_elite = true; s.damage += 1; s.can_pop_lead = true; }
+        }
+        TowerType::MilitaryBase => {
+            if path1 >= 1 { s.unit_hp = 75; s.unit_speed = 90.0; s.unit_tier = 1; }
+            if path1 >= 2 { s.unit_hp = 160; s.unit_speed = 82.0; s.unit_tier = 2; s.can_pop_lead = true; }
+            if path1 >= 3 { s.unit_hp = 450; s.unit_speed = 68.0; s.unit_tier = 3; }
+            if path1 >= 4 { s.unit_hp = 1400; s.unit_speed = 62.0; s.unit_tier = 4; }
+            let spawn_secs = match path2 {
+                0 => 12.0,
+                1 => 10.2,
+                2 => 8.8,
+                3 => 7.6,
+                _ => 6.5,
+            };
+            s.fire_rate = 1.0 / spawn_secs;
+            if path2 >= 1 { s.unit_speed *= 1.15; }
+            if path2 >= 2 { s.unit_speed *= 1.13; }
+            if path2 >= 3 { s.unit_speed *= 1.12; s.unit_hp = ((s.unit_hp as f32) * 1.20).round() as i32; }
+            if path2 >= 4 { s.unit_speed *= 1.10; s.has_airstrike = true; }
+        }
+        TowerType::CrookBoss => {
+            if path1 >= 1 { s.fire_rate *= 1.25; s.range += 22.0; }
+            if path1 >= 2 { s.fire_rate *= 2.40; s.proj_speed = 620.0; }
+            if path1 >= 3 {
+                s.can_pop_lead = true;
+                s.ceramic_bonus_damage = 2;
+                s.moab_bonus_damage = 2;
+            }
+            if path1 >= 4 {
+                s.fire_rate *= 1.90;
+                s.damage += 2;
+                s.pierce = 4;
+                s.is_golden_boss = true;
+            }
+            if path2 >= 1 { s.can_hit_camo = true; }
+            if path2 >= 2 { s.summon_interval = 10.0; s.crook_tier = 1; }
+            if path2 >= 3 { s.summon_count = 2; s.crook_tier = 2; }
+            if path2 >= 4 { s.summon_interval = 9.0; s.summon_count = 1; s.crook_tier = 3; }
+        }
     }
 
     s
@@ -180,8 +258,12 @@ pub fn apply_village_buff(mut stats: EffectiveStats, buff: VillageBuff) -> Effec
     }
     stats.fire_rate *= buff.speed_mult;
     stats.shred_duration /= buff.speed_mult.max(1.0);
+    stats.pull_speed *= buff.speed_mult;
     stats.range *= buff.range_mult;
     stats.splash_radius *= buff.range_mult;
     stats.pierce += buff.pierce_bonus;
+    if stats.damage > 0 {
+        stats.damage += buff.damage_bonus;
+    }
     stats
 }

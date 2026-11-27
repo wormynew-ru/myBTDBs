@@ -86,7 +86,7 @@ fn handle_send_bloon_packs(
         {
             let econ = sides.get_mut(ev.sender);
             econ.cash -= pack.cost;
-            econ.eco += pack.eco_gain;
+            econ.eco = (econ.eco + pack.eco_gain).max(0);
         }
 
         let (queue, _) = send_q.queue_for_mut(target);

@@ -28,22 +28,30 @@
 - `src/plugins/mod.rs` — сборка всех игровых плагинов.
 - `src/plugins/sprites/mod.rs` — генератор процедурных пиксель-арт текстур шаров и накладок `16×16` (`ImageSampler::nearest()`).
 - `src/plugins/sprites/towers_px.rs` — генератор `16×16` спрайтов башен (включая все тиры Шаромолки), снарядов и порталов.
+- `src/plugins/sprites/units_px.rs` — генератор `16×16` спрайтов Командира (`commander.png`), Военной базы (`military_base.png`), техники (`unit_jeep.png`, `unit_tank.png`, `unit_railtank.png`), Босса Мафии (`crook_boss.png`, `4-0` золотой вариант) и его головорезов (`unit_crook.png`, `unit_mafia_enforcer.png`).
 - `src/plugins/map.rs` — отрисовка полей, дорог, порталов и проверка зон постройки.
-- `src/plugins/bloons.rs` — спавн волн, очередь отправки `SendPackQueue`, движение по маршруту, снятие слоёв.
-- `src/plugins/towers/mod.rs` — постройка/апгрейд/продажа башен, аура деревни и активация способностей.
-- `src/plugins/towers/combat.rs` — поиск целей по приоритету, стрельба, полёт снарядов и коллизии.
+- `src/plugins/bloons.rs` — спавн волн, очередь отправки `SendPackQueue`, движение по маршруту, масштабирование после 30-й волны, снятие слоёв.
+- `src/plugins/towers/mod.rs` — постройка/апгрейд/продажа башен и активация способностей.
+- `src/plugins/towers/combat.rs` — поиск целей по приоритету и стрельба башен (включая `CrookBoss`).
+- `src/plugins/towers/combat_proj.rs` — полёт снарядов, коллизии, бонусный урон по `Ceramic`/`MOAB` и доход `+$15` за 10 слоёв для `Golden Boss`.
+- `src/plugins/towers/commander.rs` — комбинированная аура Деревни и Командира, периодический `Call to Arms` и 2 телохранителя.
+- `src/plugins/towers/crook_boss.rs` — призыв головорезов Босса Мафии (`Crook`, `TommyGoon`, `MafiaEnforcer`) с выхода маршрута.
+- `src/plugins/towers/military_base.rs` — спавн боевой техники `MilitaryBase` с выхода маршрута и авиаудар `0-4`.
+- `src/plugins/towers/units.rs` — логика юнитов `PathUnit` на дороге (движение, остановка/замедление головорезов при виде шаров, стрельба, гранаты и таран).
+- `src/plugins/towers/units_fx.rs` — послойный урон техники/головорезов (с учётом дохода `Golden Boss`) и визуальные эффекты взрывов `UnitExplosionFx`.
 - `src/plugins/towers/chipper.rs` — конечный автомат Шаромолки (`Scanning -> Pulling -> Shredding -> Ejecting`), вибрация и спавн частиц.
 - `src/plugins/towers/chipper_fx.rs` — активная способность `Supa-Vac` и обновление частиц выхлопа.
 - `src/plugins/towers/spikes.rs` — генерация кучек шипов Фабрики шипов (`SpikePile`), коллизии с шарами, взрывы `4-0 Spiked Mines` и ковёр `0-4 Spike Storm`.
 - `src/plugins/towers/spikes_fx.rs` — визуальный эффект огненного взрыва `Spiked Mines` и послойное снятие урона шипами.
 - `src/plugins/economy.rs` — таймер выплат `Eco`, постановка отправок в очередь, учёт жизней и конца матча.
-- `src/plugins/ai.rs` — Utility AI бота (оценка угроз, строительство, установка Фабрики шипов у выхода, апгрейды, экономика и раши).
+- `src/plugins/ai.rs` — Utility AI бота (оценка угроз, строительство `CrookBoss` против Camo/групп, Командира, Военной базы, Фабрики шипов, апгрейды, экономика и раши).
+- `src/plugins/ai_spots.rs` — оценка и подбор оптимальных позиций для башен бота.
 
 ## Интерфейс (`src/ui/`)
 - `src/ui/mod.rs` — реэкспорт UI-плагина.
 - `src/ui/menu.rs` — главное меню и выбор сложности.
 - `src/ui/hud.rs` — верхняя панель ресурсов игрока и бота.
-- `src/ui/build_bar.rs` — кнопки покупки башен и отправки шаров.
+- `src/ui/build_bar.rs` — пагинированные кнопки покупки башен (`[1/2]`) и отправки шаров (`[1/2]`).
 - `src/ui/upgrade_panel.rs` — панель выбранной башни (апгрейды, смена цели, продажа).
 - `src/ui/game_over.rs` — экран результатов матча и рестарт.
 

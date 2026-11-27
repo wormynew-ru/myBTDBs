@@ -1,17 +1,22 @@
+#[path = "ai_spots.rs"]
+mod ai_spots;
+
 use bevy::prelude::*;
 
 use crate::core::events::{
     ActivateAbilityEvent, BuildTowerEvent, SendBloonPackEvent, UpgradeTowerEvent,
 };
-use crate::core::state::{Difficulty, GameState, MapId, MatchSettings};
+use crate::core::state::{Difficulty, GameState, MatchSettings};
 use crate::core::types::{Position, Side, SidesResource, TowerType};
 use crate::data::bloons_cfg::SEND_PACKS;
-use crate::data::maps_cfg::{waypoints_for_side, ARENA_BOTTOM, ARENA_TOP, DIVIDER_HALF, HALF_W};
+use crate::data::maps_cfg::waypoints_for_side;
 use crate::data::tower_stats::{apply_village_buff, compute_effective_stats};
 use crate::data::towers_cfg::tower_cfg;
 use crate::plugins::bloons::Bloon;
 use crate::plugins::towers::{ChipperState, Tower, TowerBuff};
-use crate::utils::{is_valid_tower_spot, path_total_length, sample_path};
+use crate::utils::path_total_length;
+
+use ai_spots::{find_bot_spot, find_commander_spot};
 
 pub struct AiPlugin;
 
@@ -35,53 +40,21 @@ fn reset_ai_timer(mut ai: ResMut<AiState>, settings: Res<MatchSettings>) {
     ai.timer = settings.difficulty.ai_interval();
 }
 
-fn find_bot_spot(map_id: MapId, existing_bot_towers: &[Vec2], near_exit: bool) -> Option<Vec2> {
-    let wps = waypoints_for_side(map_id, Side::Bot);
-    let total_len = path_total_length(&wps).max(1.0);
-    let mut road_samples = Vec::new();
-    let mut d = 0.0;
-    while d <= total_len {
-        let (pt, _) = sample_path(&wps, d);
-        road_samples.push((pt, d / total_len));
-        d += 14.0;
-    }
-
-    let mut best: Option<(Vec2, f32)> = None;
-    let mut gx = DIVIDER_HALF + 42.0;
-    while gx <= HALF_W - 40.0 {
-        let mut gy = ARENA_BOTTOM + 42.0;
-        while gy <= ARENA_TOP - 42.0 {
-            let candidate = Vec2::new(gx, gy);
-            if is_valid_tower_spot(candidate, Side::Bot, &wps, existing_bot_towers) {
-                let mut score = 0.0;
-                let mut max_prog = -1.0_f32;
-                let mut hits = 0_u32;
-                for &(pt, prog) in &road_samples {
-                    let dist = candidate.distance(pt);
-                    if near_exit {
-                        if dist <= 68.0 {
-                            max_prog = max_prog.max(prog);
-                            hits += 1;
-                        }
-                    } else {
-                        if dist <= 118.0 { score += 1.0; }
-                        if (42.0..=85.0).contains(&dist) { score += 0.4; }
-                    }
-                }
-                if !near_exit || hits > 0 {
-                    if near_exit {
-                        score = max_prog * 100.0 + (hits as f32) * 0.4;
-                    }
-                    if best.map_or(true, |(_, bs)| score > bs) {
-                        best = Some((candidate, score));
-                    }
-                }
-            }
-            gy += 32.0;
+fn pick_upgrade_branch(t: &Tower, need_camo: bool, need_lead: bool) -> u8 {
+    let cfg = tower_cfg(t.tower_type);
+    if t.tower_type == TowerType::CrookBoss {
+        if need_camo && t.path2 == 0 {
+            return 2;
         }
-        gx += 32.0;
+        if need_lead && t.path1 < 3 {
+            return 1;
+        }
     }
-    best.map(|(p, _)| p)
+    if (t.path1 as usize) < cfg.path1.len() && t.path1 <= t.path2 {
+        1
+    } else {
+        2
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -126,12 +99,8 @@ fn utility_ai_system(
                 bot_positions.push(pos.0);
             }
             Side::Player => {
-                if stats.can_hit_camo {
-                    player_has_camo = true;
-                }
-                if stats.can_pop_lead {
-                    player_has_lead = true;
-                }
+                player_has_camo |= stats.can_hit_camo;
+                player_has_lead |= stats.can_pop_lead;
             }
         }
     }
@@ -139,19 +108,16 @@ fn utility_ai_system(
     let mut max_threat = 0.0_f32;
     let mut has_camo_threat = false;
     let mut has_lead_threat = false;
+    let mut bot_bloon_count = 0_usize;
     for (side, bloon) in &bloons {
         if *side == Side::Bot {
+            bot_bloon_count += 1;
             max_threat = max_threat.max(bloon.path_progress / total_len);
-            if bloon.camo {
-                has_camo_threat = true;
-            }
-            if bloon.lead {
-                has_lead_threat = true;
-            }
+            has_camo_threat |= bloon.camo;
+            has_lead_threat |= bloon.lead;
         }
     }
 
-    // Trigger Supa-Vac when Bot is threatened
     if max_threat > 0.55 {
         for (entity, t, _, chipper) in &bot_towers {
             if let Some(c) = chipper {
@@ -169,23 +135,37 @@ fn utility_ai_system(
     let bot_has_camo = bot_towers.iter().any(|(_, _, s, _)| s.can_hit_camo);
     let bot_has_lead = bot_towers.iter().any(|(_, _, s, _)| s.can_pop_lead);
     let bot_has_spike = bot_towers.iter().any(|(_, t, _, _)| t.tower_type == TowerType::SpikeFactory);
+    let bot_has_cmdr = bot_towers.iter().any(|(_, t, _, _)| t.tower_type == TowerType::Commander);
+    let bot_has_base = bot_towers.iter().any(|(_, t, _, _)| t.tower_type == TowerType::MilitaryBase);
+    let bot_has_crook = bot_towers.iter().any(|(_, t, _, _)| t.tower_type == TowerType::CrookBoss);
 
     // 1. Starter defense
     if bot_towers.is_empty() && bot_cash >= tower_cfg(TowerType::DartMonkey).cost {
         if let Some(pos) = find_bot_spot(settings.map_id, &bot_positions, false) {
-            build_writer.send(BuildTowerEvent {
-                side: Side::Bot,
-                tower_type: TowerType::DartMonkey,
-                pos,
-            });
+            build_writer.send(BuildTowerEvent { side: Side::Bot, tower_type: TowerType::DartMonkey, pos });
             return;
         }
     }
 
-    // 2. Counter Camo & protect exit against breakthroughs with Spike Factory
-    if (has_camo_threat || (settings.difficulty != Difficulty::Easy && sides.wave >= 4))
-        && !bot_has_camo
-    {
+    // 2. Counter Camo (Crook Boss 0-1, Spike Factory, or Ninja)
+    if (has_camo_threat || (settings.difficulty != Difficulty::Easy && sides.wave >= 4)) && !bot_has_camo {
+        if let Some((e, _, _, _)) = bot_towers
+            .iter()
+            .find(|(_, t, _, _)| t.tower_type == TowerType::CrookBoss && t.path2 == 0)
+        {
+            if bot_cash >= tower_cfg(TowerType::CrookBoss).path2[0].cost {
+                upgrade_writer.send(UpgradeTowerEvent { side: Side::Bot, tower_entity: *e, branch: 2 });
+                return;
+            }
+        }
+        if !bot_has_crook
+            && bot_cash >= tower_cfg(TowerType::CrookBoss).cost + tower_cfg(TowerType::CrookBoss).path2[0].cost
+        {
+            if let Some(pos) = find_bot_spot(settings.map_id, &bot_positions, false) {
+                build_writer.send(BuildTowerEvent { side: Side::Bot, tower_type: TowerType::CrookBoss, pos });
+                return;
+            }
+        }
         if !bot_has_spike && bot_cash >= tower_cfg(TowerType::SpikeFactory).cost {
             if let Some(pos) = find_bot_spot(settings.map_id, &bot_positions, true) {
                 build_writer.send(BuildTowerEvent { side: Side::Bot, tower_type: TowerType::SpikeFactory, pos });
@@ -198,9 +178,7 @@ fn utility_ai_system(
                 return;
             }
         }
-        if has_camo_threat {
-            return;
-        }
+        if has_camo_threat { return; }
     }
     if !bot_has_spike && max_threat > 0.58 && bot_cash >= tower_cfg(TowerType::SpikeFactory).cost {
         if let Some(pos) = find_bot_spot(settings.map_id, &bot_positions, true) {
@@ -210,20 +188,35 @@ fn utility_ai_system(
     }
 
     // 3. Counter Lead
-    if (has_lead_threat || (settings.difficulty != Difficulty::Easy && sides.wave >= 5))
-        && !bot_has_lead
-    {
+    if (has_lead_threat || (settings.difficulty != Difficulty::Easy && sides.wave >= 5)) && !bot_has_lead {
         if bot_cash >= tower_cfg(TowerType::Cannon).cost {
             if let Some(pos) = find_bot_spot(settings.map_id, &bot_positions, false) {
-                build_writer.send(BuildTowerEvent {
-                    side: Side::Bot,
-                    tower_type: TowerType::Cannon,
-                    pos,
-                });
+                build_writer.send(BuildTowerEvent { side: Side::Bot, tower_type: TowerType::Cannon, pos });
                 return;
             }
         }
-        if has_lead_threat {
+        if has_lead_threat { return; }
+    }
+
+    // 4. Versatile Crook Boss (against groups / camo), Commander, MilitaryBase
+    if !bot_has_crook
+        && (bot_bloon_count >= 8 || bot_towers.len() >= 1)
+        && bot_cash >= tower_cfg(TowerType::CrookBoss).cost
+    {
+        if let Some(pos) = find_bot_spot(settings.map_id, &bot_positions, false) {
+            build_writer.send(BuildTowerEvent { side: Side::Bot, tower_type: TowerType::CrookBoss, pos });
+            return;
+        }
+    }
+    if !bot_has_cmdr && bot_towers.len() >= 2 && bot_cash >= tower_cfg(TowerType::Commander).cost {
+        if let Some(pos) = find_commander_spot(settings.map_id, &bot_positions) {
+            build_writer.send(BuildTowerEvent { side: Side::Bot, tower_type: TowerType::Commander, pos });
+            return;
+        }
+    }
+    if !bot_has_base && bot_towers.len() >= 3 && bot_cash >= tower_cfg(TowerType::MilitaryBase).cost {
+        if let Some(pos) = find_bot_spot(settings.map_id, &bot_positions, false) {
+            build_writer.send(BuildTowerEvent { side: Side::Bot, tower_type: TowerType::MilitaryBase, pos });
             return;
         }
     }
@@ -233,32 +226,31 @@ fn utility_ai_system(
         (t.path1 as usize) < cfg.path1.len() || (t.path2 as usize) < cfg.path2.len()
     };
 
-    // 4. Urgent defense or upgrade
     if max_threat > 0.52 || bot_towers.len() < 2 {
         if let Some((entity, tower, _, _)) = bot_towers.iter().find(|(_, t, _, _)| can_upgrade(t)) {
-            let cfg = tower_cfg(tower.tower_type);
-            let branch = if (tower.path1 as usize) < cfg.path1.len() && tower.path1 <= tower.path2 {
-                1
-            } else {
-                2
-            };
-            upgrade_writer.send(UpgradeTowerEvent {
-                side: Side::Bot,
-                tower_entity: *entity,
-                branch,
-            });
+            let branch = pick_upgrade_branch(tower, !bot_has_camo, has_lead_threat || !bot_has_lead);
+            upgrade_writer.send(UpgradeTowerEvent { side: Side::Bot, tower_entity: *entity, branch });
             return;
         }
-        let pick = match bot_towers.len() % 7 {
-            1 => TowerType::Cannon,
-            2 => TowerType::SpikeFactory,
-            3 => TowerType::Bloonchipper,
-            4 => TowerType::NinjaMonkey,
-            5 => TowerType::IceTower,
-            6 => TowerType::Village,
+        let pick = match bot_towers.len() % 10 {
+            1 => TowerType::CrookBoss,
+            2 => TowerType::Cannon,
+            3 => TowerType::SpikeFactory,
+            4 => TowerType::Commander,
+            5 => TowerType::MilitaryBase,
+            6 => TowerType::Bloonchipper,
+            7 => TowerType::NinjaMonkey,
+            8 => TowerType::IceTower,
+            9 => TowerType::Village,
             _ => TowerType::DartMonkey,
         };
-        if let Some(pos) = find_bot_spot(settings.map_id, &bot_positions, pick == TowerType::SpikeFactory) {
+        let spot = if pick == TowerType::Commander {
+            find_commander_spot(settings.map_id, &bot_positions)
+                .or_else(|| find_bot_spot(settings.map_id, &bot_positions, false))
+        } else {
+            find_bot_spot(settings.map_id, &bot_positions, pick == TowerType::SpikeFactory)
+        };
+        if let Some(pos) = spot {
             if bot_cash >= tower_cfg(pick).cost {
                 build_writer.send(BuildTowerEvent { side: Side::Bot, tower_type: pick, pos });
                 return;
@@ -269,63 +261,37 @@ fn utility_ai_system(
     // 5. Rush Player when weak against Camo/Lead or late game
     if settings.difficulty != Difficulty::Easy && sides.wave >= 4 && max_threat < 0.45 {
         if !player_has_camo && bot_cash >= SEND_PACKS[4].cost {
-            send_writer.send(SendBloonPackEvent {
-                sender: Side::Bot,
-                pack_index: 4,
-            });
+            send_writer.send(SendBloonPackEvent { sender: Side::Bot, pack_index: 4 });
             return;
         }
         if sides.wave >= 5 && !player_has_lead && bot_cash >= SEND_PACKS[5].cost {
-            send_writer.send(SendBloonPackEvent {
-                sender: Side::Bot,
-                pack_index: 5,
-            });
+            send_writer.send(SendBloonPackEvent { sender: Side::Bot, pack_index: 5 });
             return;
         }
-        if settings.difficulty == Difficulty::Hard && sides.wave >= 11 && bot_cash >= SEND_PACKS[8].cost {
-            send_writer.send(SendBloonPackEvent {
-                sender: Side::Bot,
-                pack_index: 8,
-            });
+        if settings.difficulty == Difficulty::Hard && sides.wave >= 11 && bot_cash >= SEND_PACKS[10].cost {
+            send_writer.send(SendBloonPackEvent { sender: Side::Bot, pack_index: 10 });
             return;
         }
         if settings.difficulty == Difficulty::Hard && sides.wave >= 8 && bot_cash >= SEND_PACKS[7].cost {
-            send_writer.send(SendBloonPackEvent {
-                sender: Side::Bot,
-                pack_index: 7,
-            });
+            send_writer.send(SendBloonPackEvent { sender: Side::Bot, pack_index: 7 });
             return;
         }
     }
 
-    // 6. Calm phase Eco scaling
+    // 6. Calm phase Eco scaling (only positive-eco packs)
     if max_threat < 0.42 {
         if let Some((idx, _)) = SEND_PACKS
-            .iter()
-            .enumerate()
-            .rev()
-            .find(|(_, p)| sides.wave >= p.unlock_wave && bot_cash >= p.cost)
+            .iter().enumerate().rev()
+            .find(|(_, p)| sides.wave >= p.unlock_wave && p.eco_gain > 0 && bot_cash >= p.cost)
         {
-            send_writer.send(SendBloonPackEvent {
-                sender: Side::Bot,
-                pack_index: idx,
-            });
+            send_writer.send(SendBloonPackEvent { sender: Side::Bot, pack_index: idx });
             return;
         }
     }
 
     // 7. Steady upgrade
     if let Some((entity, tower, _, _)) = bot_towers.iter().find(|(_, t, _, _)| can_upgrade(t)) {
-        let cfg = tower_cfg(tower.tower_type);
-        let branch = if (tower.path1 as usize) < cfg.path1.len() && tower.path1 <= tower.path2 {
-            1
-        } else {
-            2
-        };
-        upgrade_writer.send(UpgradeTowerEvent {
-            side: Side::Bot,
-            tower_entity: *entity,
-            branch,
-        });
+        let branch = pick_upgrade_branch(tower, !bot_has_camo, has_lead_threat || !bot_has_lead);
+        upgrade_writer.send(UpgradeTowerEvent { side: Side::Bot, tower_entity: *entity, branch });
     }
 }

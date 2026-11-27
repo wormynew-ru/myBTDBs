@@ -1,4 +1,5 @@
 mod towers_px;
+mod units_px;
 
 use bevy::image::{Image, ImageSampler};
 use bevy::prelude::*;
@@ -32,6 +33,16 @@ pub struct SpriteAssets {
     pub tower_ninja: Handle<Image>,
     pub tower_village: Handle<Image>,
     pub tower_spike_factory: Handle<Image>,
+    pub tower_commander: Handle<Image>,
+    pub tower_military_base: Handle<Image>,
+    pub tower_crook_boss: Handle<Image>,
+    pub tower_crook_boss_gold: Handle<Image>,
+
+    pub unit_jeep: Handle<Image>,
+    pub unit_tank: Handle<Image>,
+    pub unit_railtank: Handle<Image>,
+    pub unit_crook: Handle<Image>,
+    pub unit_mafia_enforcer: Handle<Image>,
 
     pub chipper_base: Handle<Image>,
     pub chipper_p1_1: Handle<Image>,
@@ -71,6 +82,15 @@ impl SpriteAssets {
             TowerType::NinjaMonkey => self.tower_ninja.clone(),
             TowerType::Village => self.tower_village.clone(),
             TowerType::SpikeFactory => self.tower_spike_factory.clone(),
+            TowerType::Commander => self.tower_commander.clone(),
+            TowerType::MilitaryBase => self.tower_military_base.clone(),
+            TowerType::CrookBoss => {
+                if path1 >= 4 {
+                    self.tower_crook_boss_gold.clone()
+                } else {
+                    self.tower_crook_boss.clone()
+                }
+            }
             TowerType::Bloonchipper => {
                 if path1 >= 4 {
                     self.chipper_p1_4.clone()
@@ -91,6 +111,22 @@ impl SpriteAssets {
                     self.chipper_base.clone()
                 }
             }
+        }
+    }
+
+    pub fn unit_handle(&self, unit_tier: u8) -> Handle<Image> {
+        match unit_tier {
+            0..=2 => self.unit_jeep.clone(),
+            3 => self.unit_tank.clone(),
+            _ => self.unit_railtank.clone(),
+        }
+    }
+
+    pub fn crook_unit_handle(&self, is_enforcer: bool) -> Handle<Image> {
+        if is_enforcer {
+            self.unit_mafia_enforcer.clone()
+        } else {
+            self.unit_crook.clone()
         }
     }
 }
@@ -242,4 +278,5 @@ fn generate_pixel_sprites(mut images: ResMut<Assets<Image>>, mut assets: ResMut<
     assets.bloon_zomg = make_blimp(&mut images, [22, 101, 52, 255], [250, 204, 21, 255], [15, 23, 42, 255]);
 
     towers_px::populate_tower_and_proj_sprites(&mut images, &mut assets);
+    units_px::populate_commander_and_unit_sprites(&mut images, &mut assets);
 }

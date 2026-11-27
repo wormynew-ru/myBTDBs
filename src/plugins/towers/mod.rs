@@ -1,8 +1,14 @@
 mod chipper;
 mod chipper_fx;
 mod combat;
+mod combat_proj;
+mod commander;
+mod crook_boss;
+mod military_base;
 mod spikes;
 mod spikes_fx;
+mod units;
+mod units_fx;
 
 use bevy::prelude::*;
 
@@ -12,7 +18,7 @@ use crate::core::events::{
 use crate::core::state::{GameState, MatchSettings, SelectedTower};
 use crate::core::types::{MatchEntity, Position, Side, SidesResource, TargetPriority, TowerType};
 use crate::data::maps_cfg::waypoints_for_side;
-use crate::data::tower_stats::{compute_effective_stats, VillageBuff};
+use crate::data::tower_stats::VillageBuff;
 use crate::data::towers_cfg::{tower_cfg, SELL_REFUND_RATIO, TOWER_RADIUS};
 use crate::plugins::sprites::SpriteAssets;
 use crate::utils::is_valid_tower_spot;
@@ -20,9 +26,18 @@ use crate::utils::is_valid_tower_spot;
 pub use chipper::{ChipperState, ShredParticle};
 use chipper::chipper_fsm_system;
 use chipper_fx::{shred_particle_system, supa_vac_system};
-use combat::{projectile_update_system, tower_attack_system};
+use combat::tower_attack_system;
+use combat_proj::projectile_update_system;
+use commander::{
+    bodyguard_system, call_to_arms_fx_system, commander_ability_and_guards_system,
+    update_tower_buffs_system, CommanderState,
+};
+use crook_boss::{crook_boss_spawn_system, CrookBossState};
+use military_base::{military_base_spawn_system, MilitaryBaseState};
 use spikes::{spike_factory_produce_system, spike_piles_system, SpikeFactoryState};
 use spikes_fx::spike_explosion_fx_system;
+use units::path_units_system;
+use units_fx::unit_explosion_fx_system;
 
 pub struct TowersPlugin;
 
@@ -36,11 +51,18 @@ impl Plugin for TowersPlugin {
                 handle_sell_tower,
                 handle_priority_change,
                 handle_activate_ability,
-                update_village_buffs_system,
+                update_tower_buffs_system,
+                commander_ability_and_guards_system,
+                bodyguard_system,
+                call_to_arms_fx_system,
                 tower_attack_system,
                 chipper_fsm_system,
                 supa_vac_system,
                 shred_particle_system,
+                military_base_spawn_system,
+                crook_boss_spawn_system,
+                path_units_system,
+                unit_explosion_fx_system,
                 projectile_update_system,
                 spike_factory_produce_system,
                 spike_piles_system,
@@ -78,6 +100,8 @@ pub struct Projectile {
     pub can_hit_camo: bool,
     pub knockback_chance: f32,
     pub stun_duration: f32,
+    pub ceramic_bonus: i32,
+    pub moab_bonus: i32,
     pub life: f32,
     pub hit_ids: Vec<Entity>,
 }
@@ -140,6 +164,12 @@ fn handle_build_tower(
                 storm_timer: 0.5,
                 rng_state: seed,
             });
+        } else if ev.tower_type == TowerType::Commander {
+            entity_cmds.insert(CommanderState::default());
+        } else if ev.tower_type == TowerType::MilitaryBase {
+            entity_cmds.insert(MilitaryBaseState::default());
+        } else if ev.tower_type == TowerType::CrookBoss {
+            entity_cmds.insert(CrookBossState::default());
         }
 
         let entity = entity_cmds.id();
@@ -232,49 +262,5 @@ fn handle_activate_ability(
                 chipper.supa_vac_cooldown = 28.0;
             }
         }
-    }
-}
-
-fn update_village_buffs_system(
-    mut towers: Query<(Entity, &Side, &Tower, &Position, &mut TowerBuff)>,
-) {
-    let villages: Vec<(Entity, Side, Vec2, f32, VillageBuff)> = towers
-        .iter()
-        .filter(|(_, _, t, _, _)| t.tower_type == TowerType::Village)
-        .map(|(e, side, t, pos, _)| {
-            let s = compute_effective_stats(t.tower_type, t.path1, t.path2);
-            (
-                e,
-                *side,
-                pos.0,
-                s.range,
-                VillageBuff {
-                    camo: s.aura_camo,
-                    lead: s.aura_lead,
-                    speed_mult: s.aura_speed_mult,
-                    range_mult: s.aura_range_mult,
-                    pierce_bonus: s.aura_pierce_bonus,
-                },
-            )
-        })
-        .collect();
-
-    for (entity, side, tower, pos, mut buff) in &mut towers {
-        let mut combined = VillageBuff::default();
-        if tower.tower_type != TowerType::Village {
-            for (v_entity, v_side, v_pos, v_range, v_buff) in &villages {
-                if *v_entity == entity || *v_side != *side {
-                    continue;
-                }
-                if pos.0.distance(*v_pos) <= *v_range {
-                    combined.camo |= v_buff.camo;
-                    combined.lead |= v_buff.lead;
-                    combined.speed_mult = combined.speed_mult.max(v_buff.speed_mult);
-                    combined.range_mult = combined.range_mult.max(v_buff.range_mult);
-                    combined.pierce_bonus = combined.pierce_bonus.max(v_buff.pierce_bonus);
-                }
-            }
-        }
-        buff.0 = combined;
     }
 }

@@ -5,7 +5,7 @@ use bevy::prelude::*;
 use crate::core::events::{BloonLeakedEvent, SpawnBloonEvent};
 use crate::core::state::{GameState, MatchSettings};
 use crate::core::types::{BloonLayer, Health, MatchEntity, Position, Side, SidesResource};
-use crate::data::bloons_cfg::{bloon_cfg, wave_groups, WAVE_DURATION_SECS};
+use crate::data::bloons_cfg::{bloon_cfg, wave_groups, wave_ramp_multipliers, WAVE_DURATION_SECS};
 use crate::data::maps_cfg::waypoints_for_side;
 use crate::plugins::sprites::SpriteAssets;
 use crate::utils::sample_path;
@@ -40,6 +40,7 @@ pub struct Bloon {
     pub path_progress: f32,
     pub freeze_timer: f32,
     pub slow_factor: f32,
+    pub speed_mult: f32,
     pub permafrost: bool,
     pub from_send: bool,
     pub is_pulled: bool,
@@ -220,19 +221,18 @@ fn process_send_pack_queue(
 fn handle_spawn_bloon_events(
     mut commands: Commands,
     settings: Res<MatchSettings>,
+    sides: Res<SidesResource>,
     sprites: Res<SpriteAssets>,
     mut reader: EventReader<SpawnBloonEvent>,
 ) {
+    let (hp_mult, spd_mult) = wave_ramp_multipliers(sides.wave);
     for ev in reader.read() {
         let wps = waypoints_for_side(settings.map_id, ev.side);
         let (pos, _) = sample_path(&wps, ev.path_progress);
         let cfg = bloon_cfg(ev.layer);
+        let scaled_hp = ((cfg.hp as f32) * hp_mult).round().max(1.0) as i32;
         let img = sprites.bloon_handle(ev.layer, ev.lead);
-        let tint = if ev.lead
-            || matches!(
-                ev.layer,
-                BloonLayer::Rainbow | BloonLayer::Moab | BloonLayer::Bfb | BloonLayer::Zomg
-            ) {
+        let tint = if ev.lead || matches!(ev.layer, BloonLayer::Rainbow | BloonLayer::Moab | BloonLayer::Bfb | BloonLayer::Zomg) {
             Color::WHITE
         } else {
             cfg.color
@@ -249,6 +249,7 @@ fn handle_spawn_bloon_events(
                     path_progress: ev.path_progress,
                     freeze_timer: 0.0,
                     slow_factor: 1.0,
+                    speed_mult: spd_mult,
                     permafrost: ev.permafrost,
                     from_send: ev.from_send,
                     is_pulled: false,
@@ -257,27 +258,15 @@ fn handle_spawn_bloon_events(
                     regrab_immune_tower: ev.regrab_immune_tower,
                     regrab_cooldown: ev.regrab_cooldown,
                 },
-                Health {
-                    current: cfg.hp,
-                    max: cfg.hp,
-                },
+                Health { current: scaled_hp, max: scaled_hp },
                 Position(pos),
-                Sprite {
-                    image: img,
-                    color: tint,
-                    custom_size: Some(Vec2::splat(cfg.size)),
-                    ..default()
-                },
+                Sprite { image: img, color: tint, custom_size: Some(Vec2::splat(cfg.size)), ..default() },
                 Transform::from_xyz(pos.x, pos.y, if ev.layer.is_moab_class() { 6.5 } else { 6.0 }),
             ))
             .with_children(|parent| {
                 if ev.camo {
                     parent.spawn((
-                        Sprite {
-                            image: sprites.overlay_camo.clone(),
-                            custom_size: Some(Vec2::splat(cfg.size)),
-                            ..default()
-                        },
+                        Sprite { image: sprites.overlay_camo.clone(), custom_size: Some(Vec2::splat(cfg.size)), ..default() },
                         Transform::from_xyz(0.0, 0.0, 0.2),
                     ));
                 }
@@ -321,7 +310,7 @@ fn move_bloons_system(
             1.0
         };
 
-        bloon.path_progress += cfg.speed * speed_mult * dt;
+        bloon.path_progress += cfg.speed * bloon.speed_mult * speed_mult * dt;
         let wps = match side {
             Side::Player => &player_wps,
             Side::Bot => &bot_wps,
