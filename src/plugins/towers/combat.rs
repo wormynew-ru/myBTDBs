@@ -64,7 +64,7 @@ pub fn tower_attack_system(
     let dt = time.delta_secs() * settings.speed_mult;
 
     for (t_entity, t_side, mut tower, buff, t_pos, mut tf) in &mut towers {
-        if matches!(tower.tower_type, TowerType::Bloonchipper | TowerType::Village) {
+        if matches!(tower.tower_type, TowerType::Bloonchipper | TowerType::Village | TowerType::SpikeFactory) {
             continue;
         }
 

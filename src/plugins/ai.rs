@@ -11,7 +11,7 @@ use crate::data::tower_stats::{apply_village_buff, compute_effective_stats};
 use crate::data::towers_cfg::tower_cfg;
 use crate::plugins::bloons::Bloon;
 use crate::plugins::towers::{ChipperState, Tower, TowerBuff};
-use crate::utils::{is_valid_tower_spot, path_total_length};
+use crate::utils::{is_valid_tower_spot, path_total_length, sample_path};
 
 pub struct AiPlugin;
 
@@ -35,41 +35,52 @@ fn reset_ai_timer(mut ai: ResMut<AiState>, settings: Res<MatchSettings>) {
     ai.timer = settings.difficulty.ai_interval();
 }
 
-fn find_best_bot_spot(
-    map_id: MapId,
-    existing_bot_towers: &[Vec2],
-) -> Option<Vec2> {
+fn find_bot_spot(map_id: MapId, existing_bot_towers: &[Vec2], near_exit: bool) -> Option<Vec2> {
     let wps = waypoints_for_side(map_id, Side::Bot);
-    let mut best: Option<(Vec2, f32)> = None;
+    let total_len = path_total_length(&wps).max(1.0);
+    let mut road_samples = Vec::new();
+    let mut d = 0.0;
+    while d <= total_len {
+        let (pt, _) = sample_path(&wps, d);
+        road_samples.push((pt, d / total_len));
+        d += 14.0;
+    }
 
-    let mut gx = DIVIDER_HALF + 46.0;
-    while gx <= HALF_W - 42.0 {
-        let mut gy = ARENA_BOTTOM + 44.0;
-        while gy <= ARENA_TOP - 44.0 {
+    let mut best: Option<(Vec2, f32)> = None;
+    let mut gx = DIVIDER_HALF + 42.0;
+    while gx <= HALF_W - 40.0 {
+        let mut gy = ARENA_BOTTOM + 42.0;
+        while gy <= ARENA_TOP - 42.0 {
             let candidate = Vec2::new(gx, gy);
             if is_valid_tower_spot(candidate, Side::Bot, &wps, existing_bot_towers) {
                 let mut score = 0.0;
-                for pair in wps.windows(2) {
-                    let mid = (pair[0] + pair[1]) * 0.5;
-                    for pt in [pair[0], mid, pair[1]] {
-                        let d = candidate.distance(pt);
-                        if d <= 118.0 {
-                            score += 1.0;
+                let mut max_prog = -1.0_f32;
+                let mut hits = 0_u32;
+                for &(pt, prog) in &road_samples {
+                    let dist = candidate.distance(pt);
+                    if near_exit {
+                        if dist <= 68.0 {
+                            max_prog = max_prog.max(prog);
+                            hits += 1;
                         }
-                        if (42.0..=85.0).contains(&d) {
-                            score += 0.4;
-                        }
+                    } else {
+                        if dist <= 118.0 { score += 1.0; }
+                        if (42.0..=85.0).contains(&dist) { score += 0.4; }
                     }
                 }
-                if best.map_or(true, |(_, bs)| score > bs) {
-                    best = Some((candidate, score));
+                if !near_exit || hits > 0 {
+                    if near_exit {
+                        score = max_prog * 100.0 + (hits as f32) * 0.4;
+                    }
+                    if best.map_or(true, |(_, bs)| score > bs) {
+                        best = Some((candidate, score));
+                    }
                 }
             }
-            gy += 36.0;
+            gy += 32.0;
         }
-        gx += 36.0;
+        gx += 32.0;
     }
-
     best.map(|(p, _)| p)
 }
 
@@ -157,10 +168,11 @@ fn utility_ai_system(
 
     let bot_has_camo = bot_towers.iter().any(|(_, _, s, _)| s.can_hit_camo);
     let bot_has_lead = bot_towers.iter().any(|(_, _, s, _)| s.can_pop_lead);
+    let bot_has_spike = bot_towers.iter().any(|(_, t, _, _)| t.tower_type == TowerType::SpikeFactory);
 
     // 1. Starter defense
     if bot_towers.is_empty() && bot_cash >= tower_cfg(TowerType::DartMonkey).cost {
-        if let Some(pos) = find_best_bot_spot(settings.map_id, &bot_positions) {
+        if let Some(pos) = find_bot_spot(settings.map_id, &bot_positions, false) {
             build_writer.send(BuildTowerEvent {
                 side: Side::Bot,
                 tower_type: TowerType::DartMonkey,
@@ -170,21 +182,29 @@ fn utility_ai_system(
         }
     }
 
-    // 2. Counter Camo
+    // 2. Counter Camo & protect exit against breakthroughs with Spike Factory
     if (has_camo_threat || (settings.difficulty != Difficulty::Easy && sides.wave >= 4))
         && !bot_has_camo
     {
+        if !bot_has_spike && bot_cash >= tower_cfg(TowerType::SpikeFactory).cost {
+            if let Some(pos) = find_bot_spot(settings.map_id, &bot_positions, true) {
+                build_writer.send(BuildTowerEvent { side: Side::Bot, tower_type: TowerType::SpikeFactory, pos });
+                return;
+            }
+        }
         if bot_cash >= tower_cfg(TowerType::NinjaMonkey).cost {
-            if let Some(pos) = find_best_bot_spot(settings.map_id, &bot_positions) {
-                build_writer.send(BuildTowerEvent {
-                    side: Side::Bot,
-                    tower_type: TowerType::NinjaMonkey,
-                    pos,
-                });
+            if let Some(pos) = find_bot_spot(settings.map_id, &bot_positions, false) {
+                build_writer.send(BuildTowerEvent { side: Side::Bot, tower_type: TowerType::NinjaMonkey, pos });
                 return;
             }
         }
         if has_camo_threat {
+            return;
+        }
+    }
+    if !bot_has_spike && max_threat > 0.58 && bot_cash >= tower_cfg(TowerType::SpikeFactory).cost {
+        if let Some(pos) = find_bot_spot(settings.map_id, &bot_positions, true) {
+            build_writer.send(BuildTowerEvent { side: Side::Bot, tower_type: TowerType::SpikeFactory, pos });
             return;
         }
     }
@@ -194,7 +214,7 @@ fn utility_ai_system(
         && !bot_has_lead
     {
         if bot_cash >= tower_cfg(TowerType::Cannon).cost {
-            if let Some(pos) = find_best_bot_spot(settings.map_id, &bot_positions) {
+            if let Some(pos) = find_bot_spot(settings.map_id, &bot_positions, false) {
                 build_writer.send(BuildTowerEvent {
                     side: Side::Bot,
                     tower_type: TowerType::Cannon,
@@ -229,21 +249,18 @@ fn utility_ai_system(
             });
             return;
         }
-        if let Some(pos) = find_best_bot_spot(settings.map_id, &bot_positions) {
-            let pick = match bot_towers.len() % 6 {
-                1 => TowerType::Cannon,
-                2 => TowerType::Bloonchipper,
-                3 => TowerType::NinjaMonkey,
-                4 => TowerType::IceTower,
-                5 => TowerType::Village,
-                _ => TowerType::DartMonkey,
-            };
+        let pick = match bot_towers.len() % 7 {
+            1 => TowerType::Cannon,
+            2 => TowerType::SpikeFactory,
+            3 => TowerType::Bloonchipper,
+            4 => TowerType::NinjaMonkey,
+            5 => TowerType::IceTower,
+            6 => TowerType::Village,
+            _ => TowerType::DartMonkey,
+        };
+        if let Some(pos) = find_bot_spot(settings.map_id, &bot_positions, pick == TowerType::SpikeFactory) {
             if bot_cash >= tower_cfg(pick).cost {
-                build_writer.send(BuildTowerEvent {
-                    side: Side::Bot,
-                    tower_type: pick,
-                    pos,
-                });
+                build_writer.send(BuildTowerEvent { side: Side::Bot, tower_type: pick, pos });
                 return;
             }
         }

@@ -256,4 +256,54 @@ pub fn populate_tower_and_proj_sprites(
         ".DRLWWWWWWWWLRD.", ".DRLLLLLLLLLLRD.", ".DRRRRRRRRRRRRD.", "..DDDDDDDDDDDD..",
         "................", "................", "................", "................",
     ], &[('D', d), ('R', [220, 38, 38, 255]), ('L', [248, 113, 113, 255]), ('W', w)]);
+
+    assets.tower_spike_factory = make_tex(images, [
+        "................",
+        "..DDDDDDDDDDDD..",
+        ".DYYBBYYBBYYBBD.",
+        ".DBGGGGGGGGGGBD.",
+        ".DYGLLRRRRLLGYD.",
+        ".DBGGRDDDDDRGBD.",
+        ".DYGRDDDDDDDRYD.",
+        ".DBGRDDDDDDDRBD.",
+        ".DYGRDDDDDDDRYD.",
+        ".DBGGRDDDDDRGBD.",
+        ".DYGLLRRRRLLGYD.",
+        ".DBGGGGGGGGGGBD.",
+        ".DYYBBYYBBYYBBD.",
+        "..DDDDDDDDDDDD..",
+        "................",
+        "................",
+    ], &[
+        ('D', d),
+        ('B', [30, 41, 59, 255]),
+        ('Y', [250, 204, 21, 255]),
+        ('G', [100, 116, 139, 255]),
+        ('L', [148, 163, 184, 255]),
+        ('R', [203, 213, 225, 255]),
+    ]);
+
+    assets.spike_pile = make_tex(images, [
+        "................",
+        "....D......D....",
+        "...DWD....DMD...",
+        "..DWWWD..DMMMD..",
+        ".DWWLWWDDMMLMMD.",
+        "..DWWWD..DMMMD..",
+        "...DWD....DMD...",
+        "....D..D...D....",
+        "......DWD.......",
+        ".....DWWWD......",
+        "...DDWWLWWDD....",
+        "..DWWWWLWWWWD...",
+        "...DDWWLWWDD....",
+        ".....DWWWD......",
+        "......DWD.......",
+        ".......D........",
+    ], &[
+        ('D', d),
+        ('W', [226, 232, 240, 255]),
+        ('L', [255, 255, 255, 255]),
+        ('M', [148, 163, 184, 255]),
+    ]);
 }

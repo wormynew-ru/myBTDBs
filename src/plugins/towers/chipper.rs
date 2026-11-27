@@ -162,7 +162,7 @@ pub fn chipper_fsm_system(
         let forward = (t_tf.rotation * Vec3::X).truncate().normalize_or(Vec2::X);
         let funnel_pos = t_pos.0 + forward * 12.0;
         let mut still_pulling = Vec::new();
-        for slot in chipper.pulling.drain(..) {
+        for slot in std::mem::take(&mut chipper.pulling) {
             let Ok((_, _, mut b, _, mut b_pos, mut b_tf, mut b_vis)) = bloons.get_mut(slot.bloon) else {
                 continue;
             };

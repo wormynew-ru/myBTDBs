@@ -31,6 +31,7 @@ pub struct SpriteAssets {
     pub tower_ice: Handle<Image>,
     pub tower_ninja: Handle<Image>,
     pub tower_village: Handle<Image>,
+    pub tower_spike_factory: Handle<Image>,
 
     pub chipper_base: Handle<Image>,
     pub chipper_p1_1: Handle<Image>,
@@ -44,6 +45,7 @@ pub struct SpriteAssets {
     pub proj_dart: Handle<Image>,
     pub proj_bomb: Handle<Image>,
     pub proj_shuriken: Handle<Image>,
+    pub spike_pile: Handle<Image>,
     pub shred_particle: Handle<Image>,
     pub portal_entry: Handle<Image>,
     pub portal_exit: Handle<Image>,
@@ -68,6 +70,7 @@ impl SpriteAssets {
             TowerType::IceTower => self.tower_ice.clone(),
             TowerType::NinjaMonkey => self.tower_ninja.clone(),
             TowerType::Village => self.tower_village.clone(),
+            TowerType::SpikeFactory => self.tower_spike_factory.clone(),
             TowerType::Bloonchipper => {
                 if path1 >= 4 {
                     self.chipper_p1_4.clone()

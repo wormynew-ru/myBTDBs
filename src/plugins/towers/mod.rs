@@ -1,6 +1,8 @@
 mod chipper;
 mod chipper_fx;
 mod combat;
+mod spikes;
+mod spikes_fx;
 
 use bevy::prelude::*;
 
@@ -19,6 +21,8 @@ pub use chipper::{ChipperState, ShredParticle};
 use chipper::chipper_fsm_system;
 use chipper_fx::{shred_particle_system, supa_vac_system};
 use combat::{projectile_update_system, tower_attack_system};
+use spikes::{spike_factory_produce_system, spike_piles_system, SpikeFactoryState};
+use spikes_fx::spike_explosion_fx_system;
 
 pub struct TowersPlugin;
 
@@ -38,6 +42,9 @@ impl Plugin for TowersPlugin {
                 supa_vac_system,
                 shred_particle_system,
                 projectile_update_system,
+                spike_factory_produce_system,
+                spike_piles_system,
+                spike_explosion_fx_system,
             )
                 .chain()
                 .run_if(in_state(GameState::Playing)),
@@ -127,6 +134,12 @@ fn handle_build_tower(
 
         if ev.tower_type == TowerType::Bloonchipper {
             entity_cmds.insert(ChipperState::default());
+        } else if ev.tower_type == TowerType::SpikeFactory {
+            let seed = (ev.pos.x.to_bits() ^ ev.pos.y.to_bits().rotate_left(16)) | 1;
+            entity_cmds.insert(SpikeFactoryState {
+                storm_timer: 0.5,
+                rng_state: seed,
+            });
         }
 
         let entity = entity_cmds.id();

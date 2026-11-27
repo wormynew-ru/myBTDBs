@@ -62,7 +62,7 @@ fn spawn_build_bar(mut commands: Commands) {
                         Button,
                         BuildBarAction::SelectTower(tower_type),
                         Node {
-                            min_width: Val::Px(62.0),
+                            min_width: Val::Px(58.0),
                             min_height: Val::Px(56.0),
                             justify_content: JustifyContent::Center,
                             align_items: AlignItems::Center,
@@ -77,7 +77,7 @@ fn spawn_build_bar(mut commands: Commands) {
                         btn.spawn((
                             Text::new(label),
                             TextFont {
-                                font_size: 12.0,
+                                font_size: 11.5,
                                 ..default()
                             },
                             TextColor(Color::WHITE),

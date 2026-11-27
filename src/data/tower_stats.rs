@@ -55,6 +55,12 @@ pub struct EffectiveStats {
     pub aura_speed_mult: f32,
     pub aura_range_mult: f32,
     pub aura_pierce_bonus: u32,
+    // Spike Factory stats
+    pub spike_life: f32,
+    pub ceramic_bonus_damage: i32,
+    pub spike_persist_waves: bool,
+    pub spike_explode: bool,
+    pub has_spike_storm: bool,
 }
 
 pub fn compute_effective_stats(
@@ -92,6 +98,11 @@ pub fn compute_effective_stats(
         aura_speed_mult: 1.12,
         aura_range_mult: 1.0,
         aura_pierce_bonus: 0,
+        spike_life: 35.0,
+        ceramic_bonus_damage: 0,
+        spike_persist_waves: false,
+        spike_explode: false,
+        has_spike_storm: false,
     };
 
     match tower_type {
@@ -144,6 +155,16 @@ pub fn compute_effective_stats(
             if path2 >= 1 { s.aura_range_mult += 0.08; s.range += 20.0; }
             if path2 >= 2 { s.aura_camo = true; }
             if path2 >= 3 { s.aura_lead = true; }
+        }
+        TowerType::SpikeFactory => {
+            if path1 >= 1 { s.pierce = 10; }
+            if path1 >= 2 { s.can_pop_lead = true; s.damage = 2; }
+            if path1 >= 3 { s.pierce = 14; s.damage = 3; s.ceramic_bonus_damage = 3; }
+            if path1 >= 4 { s.spike_explode = true; s.splash_radius = 68.0; }
+            if path2 >= 1 { s.fire_rate *= 1.25; }
+            if path2 >= 2 { s.fire_rate *= 1.35; }
+            if path2 >= 3 { s.spike_life = 90.0; s.spike_persist_waves = true; }
+            if path2 >= 4 { s.has_spike_storm = true; }
         }
     }
 

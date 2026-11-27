@@ -59,6 +59,7 @@ pub enum TowerType {
     NinjaMonkey,
     Bloonchipper,
     Village,
+    SpikeFactory,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

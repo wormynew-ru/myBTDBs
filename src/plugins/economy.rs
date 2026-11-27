@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use crate::core::events::{BloonLeakedEvent, BloonPoppedEvent, SendBloonPackEvent};
 use crate::core::state::{GameState, MatchResult, MatchSettings};
-use crate::core::types::{Side, SideEconomy, SidesResource};
+use crate::core::types::{SideEconomy, SidesResource};
 use crate::data::bloons_cfg::{SEND_PACKS, WAVE_DURATION_SECS};
 use crate::data::towers_cfg::{ECO_INTERVAL_SECS, STARTING_CASH, STARTING_ECO, STARTING_LIVES};
 use crate::plugins::bloons::{QueuedSendPack, SendPackQueue};

@@ -34,8 +34,10 @@
 - `src/plugins/towers/combat.rs` — поиск целей по приоритету, стрельба, полёт снарядов и коллизии.
 - `src/plugins/towers/chipper.rs` — конечный автомат Шаромолки (`Scanning -> Pulling -> Shredding -> Ejecting`), вибрация и спавн частиц.
 - `src/plugins/towers/chipper_fx.rs` — активная способность `Supa-Vac` и обновление частиц выхлопа.
+- `src/plugins/towers/spikes.rs` — генерация кучек шипов Фабрики шипов (`SpikePile`), коллизии с шарами, взрывы `4-0 Spiked Mines` и ковёр `0-4 Spike Storm`.
+- `src/plugins/towers/spikes_fx.rs` — визуальный эффект огненного взрыва `Spiked Mines` и послойное снятие урона шипами.
 - `src/plugins/economy.rs` — таймер выплат `Eco`, постановка отправок в очередь, учёт жизней и конца матча.
-- `src/plugins/ai.rs` — Utility AI бота (оценка угроз, строительство, апгрейды, экономика и раши).
+- `src/plugins/ai.rs` — Utility AI бота (оценка угроз, строительство, установка Фабрики шипов у выхода, апгрейды, экономика и раши).
 
 ## Интерфейс (`src/ui/`)
 - `src/ui/mod.rs` — реэкспорт UI-плагина.

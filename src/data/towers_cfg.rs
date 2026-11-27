@@ -36,13 +36,14 @@ pub struct TowerCfg {
     pub path2: &'static [UpgradeCfg],
 }
 
-pub const ALL_TOWERS: [TowerType; 6] = [
+pub const ALL_TOWERS: [TowerType; 7] = [
     TowerType::DartMonkey,
     TowerType::Cannon,
     TowerType::IceTower,
     TowerType::NinjaMonkey,
     TowerType::Bloonchipper,
     TowerType::Village,
+    TowerType::SpikeFactory,
 ];
 
 pub fn tower_cfg(tower_type: TowerType) -> TowerCfg {
@@ -209,6 +210,35 @@ pub fn tower_cfg(tower_type: TowerType) -> TowerCfg {
                 UpgradeCfg { name: "Town Reach", cost: 260 },
                 UpgradeCfg { name: "Radar Scan", cost: 580 },
                 UpgradeCfg { name: "MIB Bureau", cost: 1450 },
+            ],
+        },
+        TowerType::SpikeFactory => TowerCfg {
+            tower_type,
+            name: "Spike Factory",
+            short_name: "Spikes",
+            cost: 500,
+            range: 75.0,
+            fire_rate: 0.625,
+            damage: 1,
+            pierce: 5,
+            proj_speed: 0.0,
+            splash_radius: 0.0,
+            can_hit_camo: true,
+            can_pop_lead: false,
+            slow_factor: 1.0,
+            slow_duration: 0.0,
+            color: Color::srgb(0.39, 0.45, 0.55),
+            path1: &[
+                UpgradeCfg { name: "Bigger Stacks", cost: 220 },
+                UpgradeCfg { name: "Hot Spikes", cost: 420 },
+                UpgradeCfg { name: "Spiked Balls", cost: 1100 },
+                UpgradeCfg { name: "Spiked Mines", cost: 2800 },
+            ],
+            path2: &[
+                UpgradeCfg { name: "Faster Prod", cost: 240 },
+                UpgradeCfg { name: "Even Faster", cost: 400 },
+                UpgradeCfg { name: "Long Life", cost: 950 },
+                UpgradeCfg { name: "Spike Storm", cost: 2600 },
             ],
         },
     }
