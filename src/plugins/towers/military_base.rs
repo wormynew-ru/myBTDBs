@@ -126,7 +126,7 @@ pub fn military_base_spawn_system(
                 let side_pts: Vec<Vec2> = bloons
                     .iter()
                     .filter(|(_, bs, b, hp, _)| {
-                        *bs == *side && hp.current > 0 && !b.is_inside_chipper
+                        **bs == *side && hp.current > 0 && !b.is_inside_chipper
                     })
                     .map(|(_, _, _, _, p)| p.0)
                     .collect();
