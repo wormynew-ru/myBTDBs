@@ -6,8 +6,8 @@ pub mod types;
 use bevy::prelude::*;
 
 use events::{
-    BloonLeakedEvent, BloonPoppedEvent, BuildTowerEvent, ChangePriorityEvent,
-    SellTowerEvent, SendBloonPackEvent, SpawnBloonEvent, UpgradeTowerEvent,
+    ActivateAbilityEvent, BloonLeakedEvent, BloonPoppedEvent, BuildTowerEvent,
+    ChangePriorityEvent, SellTowerEvent, SendBloonPackEvent, SpawnBloonEvent, UpgradeTowerEvent,
 };
 use input::{update_pointer_input, PointerInput};
 use state::{BuildSelection, GameState, MatchResult, MatchSettings, SelectedTower};
@@ -29,9 +29,10 @@ impl Plugin for CorePlugin {
             .add_event::<UpgradeTowerEvent>()
             .add_event::<SellTowerEvent>()
             .add_event::<ChangePriorityEvent>()
+            .add_event::<ActivateAbilityEvent>()
             .add_event::<SendBloonPackEvent>()
             .add_event::<BloonLeakedEvent>()
             .add_event::<BloonPoppedEvent>()
-            .add_systems(PreUpdate, update_pointer_input);
+            .add_systems(Update, update_pointer_input);
     }
 }

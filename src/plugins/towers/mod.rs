@@ -1,16 +1,23 @@
+mod chipper;
+mod chipper_fx;
 mod combat;
 
 use bevy::prelude::*;
 
 use crate::core::events::{
-    BuildTowerEvent, ChangePriorityEvent, SellTowerEvent, UpgradeTowerEvent,
+    ActivateAbilityEvent, BuildTowerEvent, ChangePriorityEvent, SellTowerEvent, UpgradeTowerEvent,
 };
 use crate::core::state::{GameState, MatchSettings, SelectedTower};
 use crate::core::types::{MatchEntity, Position, Side, SidesResource, TargetPriority, TowerType};
 use crate::data::maps_cfg::waypoints_for_side;
+use crate::data::tower_stats::{compute_effective_stats, VillageBuff};
 use crate::data::towers_cfg::{tower_cfg, SELL_REFUND_RATIO, TOWER_RADIUS};
+use crate::plugins::sprites::SpriteAssets;
 use crate::utils::is_valid_tower_spot;
 
+pub use chipper::{ChipperState, ShredParticle};
+use chipper::chipper_fsm_system;
+use chipper_fx::{shred_particle_system, supa_vac_system};
 use combat::{projectile_update_system, tower_attack_system};
 
 pub struct TowersPlugin;
@@ -24,7 +31,12 @@ impl Plugin for TowersPlugin {
                 handle_upgrade_tower,
                 handle_sell_tower,
                 handle_priority_change,
+                handle_activate_ability,
+                update_village_buffs_system,
                 tower_attack_system,
+                chipper_fsm_system,
+                supa_vac_system,
+                shred_particle_system,
                 projectile_update_system,
             )
                 .chain()
@@ -45,6 +57,9 @@ pub struct Tower {
     pub shot_count: u32,
 }
 
+#[derive(Component, Debug, Clone, Copy, Default)]
+pub struct TowerBuff(pub VillageBuff);
+
 #[derive(Component, Debug, Clone)]
 pub struct Projectile {
     pub source_tower: Entity,
@@ -63,6 +78,7 @@ pub struct Projectile {
 fn handle_build_tower(
     mut commands: Commands,
     settings: Res<MatchSettings>,
+    sprites: Res<SpriteAssets>,
     mut sides: ResMut<SidesResource>,
     mut selected: ResMut<SelectedTower>,
     existing_towers: Query<(&Side, &Position), With<Tower>>,
@@ -85,26 +101,35 @@ fn handle_build_tower(
         }
 
         sides.get_mut(ev.side).cash -= cfg.cost;
-        let entity = commands
-            .spawn((
-                MatchEntity,
-                ev.side,
-                Tower {
-                    tower_type: ev.tower_type,
-                    path1: 0,
-                    path2: 0,
-                    priority: TargetPriority::First,
-                    cooldown: 0.1,
-                    total_invested: cfg.cost,
-                    pops: 0,
-                    shot_count: 0,
-                },
-                Position(ev.pos),
-                Sprite::from_color(cfg.color, Vec2::splat(TOWER_RADIUS * 2.0)),
-                Transform::from_xyz(ev.pos.x, ev.pos.y, 7.0),
-            ))
-            .id();
+        let tex = sprites.tower_handle(ev.tower_type, 0, 0);
+        let mut entity_cmds = commands.spawn((
+            MatchEntity,
+            ev.side,
+            Tower {
+                tower_type: ev.tower_type,
+                path1: 0,
+                path2: 0,
+                priority: TargetPriority::First,
+                cooldown: 0.1,
+                total_invested: cfg.cost,
+                pops: 0,
+                shot_count: 0,
+            },
+            TowerBuff::default(),
+            Position(ev.pos),
+            Sprite {
+                image: tex,
+                custom_size: Some(Vec2::splat(TOWER_RADIUS * 2.1)),
+                ..default()
+            },
+            Transform::from_xyz(ev.pos.x, ev.pos.y, 7.0),
+        ));
 
+        if ev.tower_type == TowerType::Bloonchipper {
+            entity_cmds.insert(ChipperState::default());
+        }
+
+        let entity = entity_cmds.id();
         if ev.side == Side::Player {
             selected.0 = Some(entity);
         }
@@ -113,11 +138,12 @@ fn handle_build_tower(
 
 fn handle_upgrade_tower(
     mut sides: ResMut<SidesResource>,
-    mut towers: Query<(&Side, &mut Tower)>,
+    sprites: Res<SpriteAssets>,
+    mut towers: Query<(&Side, &mut Tower, &mut Sprite)>,
     mut reader: EventReader<UpgradeTowerEvent>,
 ) {
     for ev in reader.read() {
-        let Ok((side, mut tower)) = towers.get_mut(ev.tower_entity) else {
+        let Ok((side, mut tower, mut sprite)) = towers.get_mut(ev.tower_entity) else {
             continue;
         };
         if *side != ev.side {
@@ -125,14 +151,11 @@ fn handle_upgrade_tower(
         }
         let cfg = tower_cfg(tower.tower_type);
         let tier = if ev.branch == 1 { tower.path1 } else { tower.path2 };
-        if tier >= 3 {
+        let branch_cfgs = if ev.branch == 1 { cfg.path1 } else { cfg.path2 };
+        if (tier as usize) >= branch_cfgs.len() {
             continue;
         }
-        let upg = if ev.branch == 1 {
-            cfg.path1[tier as usize]
-        } else {
-            cfg.path2[tier as usize]
-        };
+        let upg = branch_cfgs[tier as usize];
         if sides.get(*side).cash < upg.cost {
             continue;
         }
@@ -143,6 +166,7 @@ fn handle_upgrade_tower(
         } else {
             tower.path2 += 1;
         }
+        sprite.image = sprites.tower_handle(tower.tower_type, tower.path1, tower.path2);
     }
 }
 
@@ -177,5 +201,67 @@ fn handle_priority_change(
         if let Ok(mut tower) = towers.get_mut(ev.tower_entity) {
             tower.priority = ev.priority;
         }
+    }
+}
+
+fn handle_activate_ability(
+    mut query: Query<(&Side, &Tower, &mut ChipperState)>,
+    mut reader: EventReader<ActivateAbilityEvent>,
+) {
+    for ev in reader.read() {
+        if let Ok((side, tower, mut chipper)) = query.get_mut(ev.tower_entity) {
+            if *side == ev.side
+                && tower.tower_type == TowerType::Bloonchipper
+                && tower.path2 >= 4
+                && chipper.supa_vac_cooldown <= 0.0
+            {
+                chipper.supa_vac_active = 7.0;
+                chipper.supa_vac_cooldown = 28.0;
+            }
+        }
+    }
+}
+
+fn update_village_buffs_system(
+    mut towers: Query<(Entity, &Side, &Tower, &Position, &mut TowerBuff)>,
+) {
+    let villages: Vec<(Entity, Side, Vec2, f32, VillageBuff)> = towers
+        .iter()
+        .filter(|(_, _, t, _, _)| t.tower_type == TowerType::Village)
+        .map(|(e, side, t, pos, _)| {
+            let s = compute_effective_stats(t.tower_type, t.path1, t.path2);
+            (
+                e,
+                *side,
+                pos.0,
+                s.range,
+                VillageBuff {
+                    camo: s.aura_camo,
+                    lead: s.aura_lead,
+                    speed_mult: s.aura_speed_mult,
+                    range_mult: s.aura_range_mult,
+                    pierce_bonus: s.aura_pierce_bonus,
+                },
+            )
+        })
+        .collect();
+
+    for (entity, side, tower, pos, mut buff) in &mut towers {
+        let mut combined = VillageBuff::default();
+        if tower.tower_type != TowerType::Village {
+            for (v_entity, v_side, v_pos, v_range, v_buff) in &villages {
+                if *v_entity == entity || *v_side != *side {
+                    continue;
+                }
+                if pos.0.distance(*v_pos) <= *v_range {
+                    combined.camo |= v_buff.camo;
+                    combined.lead |= v_buff.lead;
+                    combined.speed_mult = combined.speed_mult.max(v_buff.speed_mult);
+                    combined.range_mult = combined.range_mult.max(v_buff.range_mult);
+                    combined.pierce_bonus = combined.pierce_bonus.max(v_buff.pierce_bonus);
+                }
+            }
+        }
+        buff.0 = combined;
     }
 }

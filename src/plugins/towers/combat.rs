@@ -5,11 +5,12 @@ use crate::core::state::MatchSettings;
 use crate::core::types::{Health, MatchEntity, Position, Side, TargetPriority, TowerType};
 use crate::data::bloons_cfg::bloon_cfg;
 use crate::data::maps_cfg::{DIVIDER_HALF, HALF_W};
-use crate::data::towers_cfg::compute_effective_stats;
+use crate::data::tower_stats::{apply_village_buff, compute_effective_stats};
 use crate::plugins::bloons::Bloon;
+use crate::plugins::sprites::SpriteAssets;
 use crate::utils::circles_overlap;
 
-use super::{Projectile, Tower};
+use super::{Projectile, Tower, TowerBuff};
 
 fn select_target(
     tower_pos: Vec2,
@@ -21,7 +22,10 @@ fn select_target(
 ) -> Option<(Entity, Vec2)> {
     let mut best: Option<(Entity, Vec2, f32)> = None;
     for (entity, b_side, bloon, _, b_pos) in bloons.iter() {
-        if *b_side != side || (bloon.camo && !can_hit_camo) {
+        if *b_side != side
+            || bloon.is_inside_chipper
+            || (bloon.camo && !can_hit_camo)
+        {
             continue;
         }
         let d = tower_pos.distance(b_pos.0);
@@ -43,11 +47,13 @@ fn select_target(
     best.map(|(e, p, _)| (e, p))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn tower_attack_system(
     mut commands: Commands,
     time: Res<Time>,
     settings: Res<MatchSettings>,
-    mut towers: Query<(Entity, &Side, &mut Tower, &Position, &mut Transform)>,
+    sprites: Res<SpriteAssets>,
+    mut towers: Query<(Entity, &Side, &mut Tower, &TowerBuff, &Position, &mut Transform)>,
     mut bloons: Query<(Entity, &Side, &mut Bloon, &mut Health, &Position)>,
     mut spawn_writer: EventWriter<SpawnBloonEvent>,
     mut pop_writer: EventWriter<BloonPoppedEvent>,
@@ -57,16 +63,24 @@ pub fn tower_attack_system(
     }
     let dt = time.delta_secs() * settings.speed_mult;
 
-    for (t_entity, t_side, mut tower, t_pos, mut tf) in &mut towers {
+    for (t_entity, t_side, mut tower, buff, t_pos, mut tf) in &mut towers {
+        if matches!(tower.tower_type, TowerType::Bloonchipper | TowerType::Village) {
+            continue;
+        }
+
         tower.cooldown = (tower.cooldown - dt).max(0.0);
         if tower.cooldown > 0.0 {
             continue;
         }
-        let stats = compute_effective_stats(tower.tower_type, tower.path1, tower.path2);
+        let stats = apply_village_buff(
+            compute_effective_stats(tower.tower_type, tower.path1, tower.path2),
+            buff.0,
+        );
 
         if tower.tower_type == TowerType::IceTower {
             let any_in_range = bloons.iter().any(|(_, bs, b, _, bp)| {
                 *bs == *t_side
+                    && !b.is_inside_chipper
                     && (!b.camo || stats.can_hit_camo)
                     && t_pos.0.distance(bp.0) <= stats.range
             });
@@ -76,6 +90,7 @@ pub fn tower_attack_system(
             tower.cooldown = 1.0 / stats.fire_rate;
             for (b_entity, bs, mut bloon, mut hp, bp) in &mut bloons {
                 if *bs != *t_side
+                    || bloon.is_inside_chipper
                     || (bloon.camo && !stats.can_hit_camo)
                     || t_pos.0.distance(bp.0) > stats.splash_radius
                 {
@@ -135,12 +150,15 @@ pub fn tower_attack_system(
             let ang = base_angle + off;
             let spd = if is_flash { 440.0 } else { stats.proj_speed };
             let vel = Vec2::new(ang.cos(), ang.sin()) * spd;
+            let proj_img = match tower.tower_type {
+                TowerType::Cannon => sprites.proj_bomb.clone(),
+                TowerType::NinjaMonkey => sprites.proj_shuriken.clone(),
+                _ => sprites.proj_dart.clone(),
+            };
             let color = if is_flash {
                 Color::srgb(0.99, 0.94, 0.54)
-            } else if tower.tower_type == TowerType::Cannon {
-                Color::srgb(0.15, 0.18, 0.22)
             } else {
-                Color::srgb(0.98, 0.95, 0.78)
+                Color::WHITE
             };
 
             commands.spawn((
@@ -160,7 +178,12 @@ pub fn tower_attack_system(
                     life: 1.15,
                     hit_ids: Vec::new(),
                 },
-                Sprite::from_color(color, Vec2::splat(10.0)),
+                Sprite {
+                    image: proj_img,
+                    color,
+                    custom_size: Some(Vec2::splat(if is_flash { 18.0 } else { 14.0 })),
+                    ..default()
+                },
                 Transform::from_xyz(t_pos.0.x, t_pos.0.y, 9.0)
                     .with_rotation(Quat::from_rotation_z(ang)),
             ));
@@ -168,6 +191,7 @@ pub fn tower_attack_system(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn projectile_update_system(
     mut commands: Commands,
     time: Res<Time>,
@@ -201,6 +225,7 @@ pub fn projectile_update_system(
         let mut hit_target = None;
         for (b_entity, b_side, bloon, _, b_pos) in bloons.iter() {
             if *b_side != *p_side
+                || bloon.is_inside_chipper
                 || (bloon.camo && !proj.can_hit_camo)
                 || proj.hit_ids.contains(&b_entity)
             {
@@ -220,7 +245,7 @@ pub fn projectile_update_system(
         let mut src_tower = towers.get_mut(proj.source_tower).ok();
         if proj.splash_radius > 0.0 {
             for (b_entity, b_side, mut bloon, mut hp, b_pos) in &mut bloons {
-                if *b_side != *p_side || (bloon.camo && !proj.can_hit_camo) {
+                if *b_side != *p_side || bloon.is_inside_chipper || (bloon.camo && !proj.can_hit_camo) {
                     continue;
                 }
                 let r = bloon_cfg(bloon.layer).size * 0.5;
@@ -315,6 +340,8 @@ fn apply_damage(
                 path_progress: (bloon.path_progress - (c as f32) * 12.0).max(0.0),
                 from_send: bloon.from_send,
                 permafrost: bloon.permafrost,
+                regrab_immune_tower: bloon.regrab_immune_tower,
+                regrab_cooldown: bloon.regrab_cooldown,
             });
         }
     }

@@ -9,6 +9,7 @@ pub struct BloonCfg {
     pub hp: i32,
     pub speed: f32,
     pub size: f32,
+    pub weight: u32,
     pub color: Color,
     pub rbe: i32,
     pub child: Option<(BloonLayer, u8)>,
@@ -16,54 +17,16 @@ pub struct BloonCfg {
 
 pub fn bloon_cfg(layer: BloonLayer) -> BloonCfg {
     match layer {
-        BloonLayer::Red => BloonCfg {
-            hp: 1,
-            speed: 64.0,
-            size: 20.0,
-            color: Color::srgb(0.94, 0.27, 0.27),
-            rbe: 1,
-            child: None,
-        },
-        BloonLayer::Blue => BloonCfg {
-            hp: 1,
-            speed: 80.0,
-            size: 22.0,
-            color: Color::srgb(0.23, 0.51, 0.96),
-            rbe: 2,
-            child: Some((BloonLayer::Red, 1)),
-        },
-        BloonLayer::Green => BloonCfg {
-            hp: 1,
-            speed: 98.0,
-            size: 24.0,
-            color: Color::srgb(0.13, 0.77, 0.37),
-            rbe: 3,
-            child: Some((BloonLayer::Blue, 1)),
-        },
-        BloonLayer::Yellow => BloonCfg {
-            hp: 1,
-            speed: 126.0,
-            size: 25.0,
-            color: Color::srgb(0.92, 0.70, 0.05),
-            rbe: 4,
-            child: Some((BloonLayer::Green, 1)),
-        },
-        BloonLayer::Pink => BloonCfg {
-            hp: 1,
-            speed: 152.0,
-            size: 26.0,
-            color: Color::srgb(0.93, 0.28, 0.60),
-            rbe: 5,
-            child: Some((BloonLayer::Yellow, 1)),
-        },
-        BloonLayer::Ceramic => BloonCfg {
-            hp: 10,
-            speed: 104.0,
-            size: 30.0,
-            color: Color::srgb(0.80, 0.48, 0.12),
-            rbe: 20,
-            child: Some((BloonLayer::Pink, 2)),
-        },
+        BloonLayer::Red => BloonCfg { hp: 1, speed: 64.0, size: 20.0, weight: 1, color: Color::srgb(0.94, 0.27, 0.27), rbe: 1, child: None },
+        BloonLayer::Blue => BloonCfg { hp: 1, speed: 80.0, size: 22.0, weight: 1, color: Color::srgb(0.23, 0.51, 0.96), rbe: 2, child: Some((BloonLayer::Red, 1)) },
+        BloonLayer::Green => BloonCfg { hp: 1, speed: 98.0, size: 24.0, weight: 1, color: Color::srgb(0.13, 0.77, 0.37), rbe: 3, child: Some((BloonLayer::Blue, 1)) },
+        BloonLayer::Yellow => BloonCfg { hp: 1, speed: 126.0, size: 25.0, weight: 1, color: Color::srgb(0.92, 0.70, 0.05), rbe: 4, child: Some((BloonLayer::Green, 1)) },
+        BloonLayer::Pink => BloonCfg { hp: 1, speed: 152.0, size: 26.0, weight: 1, color: Color::srgb(0.93, 0.28, 0.60), rbe: 5, child: Some((BloonLayer::Yellow, 1)) },
+        BloonLayer::Rainbow => BloonCfg { hp: 1, speed: 136.0, size: 27.0, weight: 1, color: Color::srgb(0.95, 0.45, 0.85), rbe: 11, child: Some((BloonLayer::Pink, 2)) },
+        BloonLayer::Ceramic => BloonCfg { hp: 10, speed: 104.0, size: 30.0, weight: 3, color: Color::srgb(0.80, 0.48, 0.12), rbe: 32, child: Some((BloonLayer::Rainbow, 2)) },
+        BloonLayer::Moab => BloonCfg { hp: 200, speed: 48.0, size: 40.0, weight: 3, color: Color::srgb(0.22, 0.74, 0.97), rbe: 180, child: Some((BloonLayer::Ceramic, 4)) },
+        BloonLayer::Bfb => BloonCfg { hp: 700, speed: 34.0, size: 46.0, weight: 3, color: Color::srgb(0.86, 0.15, 0.15), rbe: 600, child: Some((BloonLayer::Moab, 4)) },
+        BloonLayer::Zomg => BloonCfg { hp: 4000, speed: 24.0, size: 52.0, weight: 99, color: Color::srgb(0.10, 0.42, 0.20), rbe: 1800, child: Some((BloonLayer::Bfb, 4)) },
     }
 }
 
@@ -178,6 +141,18 @@ pub const SEND_PACKS: &[SendPackCfg] = &[
         unlock_wave: 8,
         badge_color: Color::srgb(0.75, 0.45, 0.12),
     },
+    SendPackCfg {
+        short_label: "1x MOAB",
+        layer: BloonLayer::Moab,
+        camo: false,
+        lead: false,
+        count: 1,
+        spacing: 0.50,
+        cost: 1100,
+        eco_gain: 75,
+        unlock_wave: 11,
+        badge_color: Color::srgb(0.22, 0.74, 0.97),
+    },
 ];
 
 pub struct WaveGroupCfg {
@@ -198,100 +173,28 @@ pub fn wave_groups(wave: u32) -> Vec<WaveGroupCfg> {
             lead: false,
         }],
         2 => vec![
-            WaveGroupCfg {
-                layer: BloonLayer::Red,
-                count: 8,
-                spacing: 0.45,
-                camo: false,
-                lead: false,
-            },
-            WaveGroupCfg {
-                layer: BloonLayer::Blue,
-                count: 6,
-                spacing: 0.5,
-                camo: false,
-                lead: false,
-            },
+            WaveGroupCfg { layer: BloonLayer::Red, count: 8, spacing: 0.45, camo: false, lead: false },
+            WaveGroupCfg { layer: BloonLayer::Blue, count: 6, spacing: 0.5, camo: false, lead: false },
         ],
         3 => vec![
-            WaveGroupCfg {
-                layer: BloonLayer::Blue,
-                count: 10,
-                spacing: 0.36,
-                camo: false,
-                lead: false,
-            },
-            WaveGroupCfg {
-                layer: BloonLayer::Green,
-                count: 5,
-                spacing: 0.45,
-                camo: false,
-                lead: false,
-            },
+            WaveGroupCfg { layer: BloonLayer::Blue, count: 10, spacing: 0.36, camo: false, lead: false },
+            WaveGroupCfg { layer: BloonLayer::Green, count: 5, spacing: 0.45, camo: false, lead: false },
         ],
         4 => vec![
-            WaveGroupCfg {
-                layer: BloonLayer::Green,
-                count: 10,
-                spacing: 0.34,
-                camo: false,
-                lead: false,
-            },
-            WaveGroupCfg {
-                layer: BloonLayer::Yellow,
-                count: 5,
-                spacing: 0.4,
-                camo: false,
-                lead: false,
-            },
+            WaveGroupCfg { layer: BloonLayer::Green, count: 10, spacing: 0.34, camo: false, lead: false },
+            WaveGroupCfg { layer: BloonLayer::Yellow, count: 5, spacing: 0.4, camo: false, lead: false },
         ],
         5 => vec![
-            WaveGroupCfg {
-                layer: BloonLayer::Green,
-                count: 8,
-                spacing: 0.32,
-                camo: false,
-                lead: false,
-            },
-            WaveGroupCfg {
-                layer: BloonLayer::Yellow,
-                count: 4,
-                spacing: 0.35,
-                camo: true,
-                lead: false,
-            },
+            WaveGroupCfg { layer: BloonLayer::Green, count: 8, spacing: 0.32, camo: false, lead: false },
+            WaveGroupCfg { layer: BloonLayer::Yellow, count: 4, spacing: 0.35, camo: true, lead: false },
         ],
         6 => vec![
-            WaveGroupCfg {
-                layer: BloonLayer::Yellow,
-                count: 10,
-                spacing: 0.28,
-                camo: false,
-                lead: false,
-            },
-            WaveGroupCfg {
-                layer: BloonLayer::Green,
-                count: 4,
-                spacing: 0.45,
-                camo: false,
-                lead: true,
-            },
+            WaveGroupCfg { layer: BloonLayer::Yellow, count: 10, spacing: 0.28, camo: false, lead: false },
+            WaveGroupCfg { layer: BloonLayer::Green, count: 4, spacing: 0.45, camo: false, lead: true },
         ],
         7 => vec![
-            WaveGroupCfg {
-                layer: BloonLayer::Yellow,
-                count: 8,
-                spacing: 0.24,
-                camo: false,
-                lead: false,
-            },
-            WaveGroupCfg {
-                layer: BloonLayer::Pink,
-                count: 7,
-                spacing: 0.28,
-                camo: false,
-                lead: false,
-            },
+            WaveGroupCfg { layer: BloonLayer::Yellow, count: 8, spacing: 0.24, camo: false, lead: false },
+            WaveGroupCfg { layer: BloonLayer::Pink, count: 7, spacing: 0.28, camo: false, lead: false },
         ],
         _ => {
             let scale = (wave - 6).min(12);
@@ -318,11 +221,47 @@ pub fn wave_groups(wave: u32) -> Vec<WaveGroupCfg> {
                     lead: true,
                 },
             ];
+            if wave >= 9 {
+                groups.push(WaveGroupCfg {
+                    layer: BloonLayer::Rainbow,
+                    count: (wave - 7).min(8),
+                    spacing: 0.32,
+                    camo: false,
+                    lead: false,
+                });
+            }
             if wave >= 10 {
                 groups.push(WaveGroupCfg {
                     layer: BloonLayer::Ceramic,
-                    count: (wave - 8).min(10),
+                    count: (wave - 8).min(8),
                     spacing: 0.42,
+                    camo: false,
+                    lead: false,
+                });
+            }
+            if wave >= 13 {
+                groups.push(WaveGroupCfg {
+                    layer: BloonLayer::Moab,
+                    count: ((wave - 11) / 2).clamp(1, 3),
+                    spacing: 1.6,
+                    camo: false,
+                    lead: false,
+                });
+            }
+            if wave >= 17 {
+                groups.push(WaveGroupCfg {
+                    layer: BloonLayer::Bfb,
+                    count: 1,
+                    spacing: 2.0,
+                    camo: false,
+                    lead: false,
+                });
+            }
+            if wave >= 21 {
+                groups.push(WaveGroupCfg {
+                    layer: BloonLayer::Zomg,
+                    count: 1,
+                    spacing: 2.5,
                     camo: false,
                     lead: false,
                 });

@@ -1,10 +1,12 @@
 use bevy::prelude::*;
 
-use crate::core::events::{ChangePriorityEvent, SellTowerEvent, UpgradeTowerEvent};
+use crate::core::events::{
+    ActivateAbilityEvent, ChangePriorityEvent, SellTowerEvent, UpgradeTowerEvent,
+};
 use crate::core::state::{GameState, SelectedTower};
-use crate::core::types::Side;
+use crate::core::types::{Side, TowerType};
 use crate::data::towers_cfg::{tower_cfg, SELL_REFUND_RATIO};
-use crate::plugins::towers::Tower;
+use crate::plugins::towers::{ChipperState, Tower, TowerBuff};
 
 pub struct UpgradePanelPlugin;
 
@@ -36,12 +38,19 @@ struct Path2BtnText;
 struct PriorityBtnText;
 
 #[derive(Component)]
+struct AbilityBtn;
+
+#[derive(Component)]
+struct AbilityBtnText;
+
+#[derive(Component)]
 struct SellBtnText;
 
 #[derive(Component)]
 enum UpgradePanelAction {
     UpgradePath(u8),
     CyclePriority,
+    ActivateAbility,
     Sell,
     Close,
 }
@@ -51,12 +60,12 @@ fn spawn_upgrade_panel(mut commands: Commands) {
         .spawn((
             UpgradePanelRoot,
             Node {
-                width: Val::Px(245.0),
+                width: Val::Px(255.0),
                 position_type: PositionType::Absolute,
                 right: Val::Px(12.0),
                 top: Val::Px(68.0),
                 flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(8.0),
+                row_gap: Val::Px(7.0),
                 padding: UiRect::all(Val::Px(12.0)),
                 border: UiRect::all(Val::Px(2.0)),
                 ..default()
@@ -71,7 +80,7 @@ fn spawn_upgrade_panel(mut commands: Commands) {
                 PanelTitleText,
                 Text::new("Tower"),
                 TextFont {
-                    font_size: 16.0,
+                    font_size: 15.0,
                     ..default()
                 },
                 TextColor(Color::srgb(0.98, 0.80, 0.24)),
@@ -95,6 +104,36 @@ fn spawn_upgrade_panel(mut commands: Commands) {
                 UpgradePanelAction::CyclePriority,
                 Color::srgb(0.20, 0.25, 0.36),
             );
+
+            panel
+                .spawn((
+                    Button,
+                    AbilityBtn,
+                    UpgradePanelAction::ActivateAbility,
+                    Node {
+                        width: Val::Percent(100.0),
+                        min_height: Val::Px(50.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                        ..default()
+                    },
+                    BorderRadius::all(Val::Px(8.0)),
+                    BackgroundColor(Color::srgb(0.45, 0.16, 0.72)),
+                    Visibility::Hidden,
+                ))
+                .with_children(|btn| {
+                    btn.spawn((
+                        AbilityBtnText,
+                        Text::new("Supa-Vac"),
+                        TextFont {
+                            font_size: 13.0,
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                    ));
+                });
+
             spawn_panel_btn::<SellBtnText>(
                 panel,
                 "Sell",
@@ -129,14 +168,12 @@ fn spawn_upgrade_panel(mut commands: Commands) {
         });
 }
 
-fn spawn_panel_btn<M: Component>(
+fn spawn_panel_btn<M: Component + Default>(
     parent: &mut ChildBuilder,
     initial: &str,
     action: UpgradePanelAction,
     bg: Color,
-) where
-    M: Default,
-{
+) {
     parent
         .spawn((
             Button,
@@ -165,18 +202,10 @@ fn spawn_panel_btn<M: Component>(
         });
 }
 
-impl Default for Path1BtnText {
-    fn default() -> Self { Self }
-}
-impl Default for Path2BtnText {
-    fn default() -> Self { Self }
-}
-impl Default for PriorityBtnText {
-    fn default() -> Self { Self }
-}
-impl Default for SellBtnText {
-    fn default() -> Self { Self }
-}
+impl Default for Path1BtnText { fn default() -> Self { Self } }
+impl Default for Path2BtnText { fn default() -> Self { Self } }
+impl Default for PriorityBtnText { fn default() -> Self { Self } }
+impl Default for SellBtnText { fn default() -> Self { Self } }
 
 fn despawn_upgrade_panel(mut commands: Commands, query: Query<Entity, With<UpgradePanelRoot>>) {
     for entity in &query {
@@ -185,15 +214,18 @@ fn despawn_upgrade_panel(mut commands: Commands, query: Query<Entity, With<Upgra
 }
 
 #[allow(clippy::type_complexity)]
+#[allow(clippy::too_many_arguments)]
 fn sync_upgrade_panel(
     selected: Res<SelectedTower>,
-    towers: Query<&Tower>,
+    towers: Query<(&Tower, &TowerBuff, Option<&ChipperState>)>,
     mut panel_q: Query<&mut Visibility, With<UpgradePanelRoot>>,
-    mut title_q: Query<&mut Text, (With<PanelTitleText>, Without<Path1BtnText>, Without<Path2BtnText>, Without<PriorityBtnText>, Without<SellBtnText>)>,
-    mut p1_q: Query<&mut Text, (With<Path1BtnText>, Without<PanelTitleText>, Without<Path2BtnText>, Without<PriorityBtnText>, Without<SellBtnText>)>,
-    mut p2_q: Query<&mut Text, (With<Path2BtnText>, Without<PanelTitleText>, Without<Path1BtnText>, Without<PriorityBtnText>, Without<SellBtnText>)>,
-    mut prio_q: Query<&mut Text, (With<PriorityBtnText>, Without<PanelTitleText>, Without<Path1BtnText>, Without<Path2BtnText>, Without<SellBtnText>)>,
-    mut sell_q: Query<&mut Text, (With<SellBtnText>, Without<PanelTitleText>, Without<Path1BtnText>, Without<Path2BtnText>, Without<PriorityBtnText>)>,
+    mut ability_vis_q: Query<&mut Visibility, (With<AbilityBtn>, Without<UpgradePanelRoot>)>,
+    mut title_q: Query<&mut Text, (With<PanelTitleText>, Without<Path1BtnText>, Without<Path2BtnText>, Without<PriorityBtnText>, Without<SellBtnText>, Without<AbilityBtnText>)>,
+    mut p1_q: Query<&mut Text, (With<Path1BtnText>, Without<PanelTitleText>, Without<Path2BtnText>, Without<PriorityBtnText>, Without<SellBtnText>, Without<AbilityBtnText>)>,
+    mut p2_q: Query<&mut Text, (With<Path2BtnText>, Without<PanelTitleText>, Without<Path1BtnText>, Without<PriorityBtnText>, Without<SellBtnText>, Without<AbilityBtnText>)>,
+    mut prio_q: Query<&mut Text, (With<PriorityBtnText>, Without<PanelTitleText>, Without<Path1BtnText>, Without<Path2BtnText>, Without<SellBtnText>, Without<AbilityBtnText>)>,
+    mut sell_q: Query<&mut Text, (With<SellBtnText>, Without<PanelTitleText>, Without<Path1BtnText>, Without<Path2BtnText>, Without<PriorityBtnText>, Without<AbilityBtnText>)>,
+    mut ab_text_q: Query<&mut Text, (With<AbilityBtnText>, Without<PanelTitleText>, Without<Path1BtnText>, Without<Path2BtnText>, Without<PriorityBtnText>, Without<SellBtnText>)>,
 ) {
     let Ok(mut vis) = panel_q.get_single_mut() else {
         return;
@@ -202,7 +234,7 @@ fn sync_upgrade_panel(
         *vis = Visibility::Hidden;
         return;
     };
-    let Ok(tower) = towers.get(entity) else {
+    let Ok((tower, buff, chipper)) = towers.get(entity) else {
         *vis = Visibility::Hidden;
         return;
     };
@@ -211,26 +243,46 @@ fn sync_upgrade_panel(
     let cfg = tower_cfg(tower.tower_type);
 
     if let Ok(mut t) = title_q.get_single_mut() {
-        **t = format!("{} | Pops: {}", cfg.name, tower.pops);
+        let camo_tag = if buff.0.camo { " [CAMO]" } else { "" };
+        let lead_tag = if buff.0.lead { " [LEAD]" } else { "" };
+        **t = format!("{} | Pops: {}{}{}", cfg.name, tower.pops, camo_tag, lead_tag);
     }
     if let Ok(mut t) = p1_q.get_single_mut() {
-        **t = if tower.path1 < 3 {
+        let max_t = cfg.path1.len();
+        **t = if (tower.path1 as usize) < max_t {
             let u = cfg.path1[tower.path1 as usize];
-            format!("P1 ({}/3): {} ${}", tower.path1, u.name, u.cost)
+            format!("P1 ({}/{}): {} ${}", tower.path1, max_t, u.name, u.cost)
         } else {
-            "P1 (3/3): MAXED".to_string()
+            format!("P1 ({}/{}): MAXED", max_t, max_t)
         };
     }
     if let Ok(mut t) = p2_q.get_single_mut() {
-        **t = if tower.path2 < 3 {
+        let max_t = cfg.path2.len();
+        **t = if (tower.path2 as usize) < max_t {
             let u = cfg.path2[tower.path2 as usize];
-            format!("P2 ({}/3): {} ${}", tower.path2, u.name, u.cost)
+            format!("P2 ({}/{}): {} ${}", tower.path2, max_t, u.name, u.cost)
         } else {
-            "P2 (3/3): MAXED".to_string()
+            format!("P2 ({}/{}): MAXED", max_t, max_t)
         };
     }
     if let Ok(mut t) = prio_q.get_single_mut() {
         **t = format!("Target: {}", tower.priority.label());
+    }
+    if let Ok(mut ab_vis) = ability_vis_q.get_single_mut() {
+        if tower.tower_type == TowerType::Bloonchipper && tower.path2 >= 4 {
+            *ab_vis = Visibility::Inherited;
+            if let (Ok(mut ab_t), Some(c)) = (ab_text_q.get_single_mut(), chipper) {
+                **ab_t = if c.supa_vac_active > 0.0 {
+                    format!("Supa-Vac ACTIVE ({:.1}s)", c.supa_vac_active)
+                } else if c.supa_vac_cooldown > 0.0 {
+                    format!("Supa-Vac CD: {:.1}s", c.supa_vac_cooldown)
+                } else {
+                    "ACTIVATE SUPA-VAC".to_string()
+                };
+            }
+        } else {
+            *ab_vis = Visibility::Hidden;
+        }
     }
     if let Ok(mut t) = sell_q.get_single_mut() {
         let refund = ((tower.total_invested as f32) * SELL_REFUND_RATIO).round() as i32;
@@ -244,6 +296,7 @@ fn handle_upgrade_panel_buttons(
     interactions: Query<(&Interaction, &UpgradePanelAction), Changed<Interaction>>,
     mut upgrade_writer: EventWriter<UpgradeTowerEvent>,
     mut prio_writer: EventWriter<ChangePriorityEvent>,
+    mut ability_writer: EventWriter<ActivateAbilityEvent>,
     mut sell_writer: EventWriter<SellTowerEvent>,
 ) {
     let Some(tower_entity) = selected.0 else {
@@ -269,6 +322,12 @@ fn handle_upgrade_panel_buttons(
                         priority: tower.priority.next(),
                     });
                 }
+            }
+            UpgradePanelAction::ActivateAbility => {
+                ability_writer.send(ActivateAbilityEvent {
+                    side: Side::Player,
+                    tower_entity,
+                });
             }
             UpgradePanelAction::Sell => {
                 sell_writer.send(SellTowerEvent {

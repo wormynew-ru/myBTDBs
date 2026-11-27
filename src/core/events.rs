@@ -11,6 +11,8 @@ pub struct SpawnBloonEvent {
     pub path_progress: f32,
     pub from_send: bool,
     pub permafrost: bool,
+    pub regrab_immune_tower: Option<Entity>,
+    pub regrab_cooldown: f32,
 }
 
 #[derive(Event, Debug, Clone, Copy)]
@@ -37,6 +39,12 @@ pub struct SellTowerEvent {
 pub struct ChangePriorityEvent {
     pub tower_entity: Entity,
     pub priority: TargetPriority,
+}
+
+#[derive(Event, Debug, Clone, Copy)]
+pub struct ActivateAbilityEvent {
+    pub side: Side,
+    pub tower_entity: Entity,
 }
 
 #[derive(Event, Debug, Clone, Copy)]

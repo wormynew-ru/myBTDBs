@@ -6,29 +6,35 @@
 - `CLAUDE.md` — архитектурные правила и ограничения.
 - `TZ.md` — функциональное техническое задание.
 - `CHANGELOG.md` — история изменений проекта.
+- `req.md` — спецификация спрайтов `16×16` (имена, размеры, цвета, ориентация).
 - `src/main.rs` — точка входа для ПК (вызывает `lib::main()`).
 - `src/lib.rs` — главная точка входа (`#[bevy_main]`), настройка камеры, окна и регистрация плагинов.
 
 ## Ядро (`src/core/`)
 - `src/core/mod.rs` — реэкспорт модулей ядра.
 - `src/core/state.rs` — состояния игры (`GameState`: `MainMenu`, `Playing`, `GameOver`) и настройки матча.
-- `src/core/types.rs` — базовые типы и компоненты (`Side::Player`, `Side::Bot`, `Health`, `Position`).
-- `src/core/events.rs` — все игровые события (`SpawnBloonEvent`, `BuildTowerEvent`, `UpgradeTowerEvent`, `BloonLeakedEvent`).
+- `src/core/types.rs` — базовые типы и компоненты (`Side::Player`, `Side::Bot`, `Health`, `Position`, `BloonLayer`, `TowerType`).
+- `src/core/events.rs` — все игровые события (`SpawnBloonEvent`, `BuildTowerEvent`, `UpgradeTowerEvent`, `ActivateAbilityEvent`, `BloonLeakedEvent`).
 - `src/core/input.rs` — унифицированный ввод (`PointerInput`) для мыши и сенсора.
 
 ## Данные и баланс (`src/data/`)
 - `src/data/mod.rs` — реэкспорт конфигов.
-- `src/data/bloons_cfg.rs` — характеристики слоёв шаров и наборов для отправки (цена, прирост Eco).
-- `src/data/towers_cfg.rs` — характеристики башен, цены и дерево апгрейдов (2×3).
+- `src/data/bloons_cfg.rs` — характеристики слоёв и весов шаров (`Red`..`ZOMG`), наборов отправки (`SEND_PACKS`).
+- `src/data/towers_cfg.rs` — характеристики башен, цены и дерево апгрейдов (2×3 / 2×4).
+- `src/data/tower_stats.rs` — расчёт эффективных статов и баффов от `Monkey Village`.
 - `src/data/maps_cfg.rs` — координаты маршрутов (waypoints) для обеих половин экрана.
 
 ## Игровые домены (`src/plugins/`)
 - `src/plugins/mod.rs` — сборка всех игровых плагинов.
-- `src/plugins/map.rs` — отрисовка полей, дорог и проверка зон постройки.
-- `src/plugins/bloons.rs` — спавн волн, движение по маршруту, снятие слоёв и деление шаров.
-- `src/plugins/towers/mod.rs` — компоненты башен/снарядов и обработка постройки/апгрейда/продажи.
+- `src/plugins/sprites/mod.rs` — генератор процедурных пиксель-арт текстур шаров и накладок `16×16` (`ImageSampler::nearest()`).
+- `src/plugins/sprites/towers_px.rs` — генератор `16×16` спрайтов башен (включая все тиры Шаромолки), снарядов и порталов.
+- `src/plugins/map.rs` — отрисовка полей, дорог, порталов и проверка зон постройки.
+- `src/plugins/bloons.rs` — спавн волн, очередь отправки `SendPackQueue`, движение по маршруту, снятие слоёв.
+- `src/plugins/towers/mod.rs` — постройка/апгрейд/продажа башен, аура деревни и активация способностей.
 - `src/plugins/towers/combat.rs` — поиск целей по приоритету, стрельба, полёт снарядов и коллизии.
-- `src/plugins/economy.rs` — таймер выплат `Eco`, списание денег, учёт жизней и проверка конца матча.
+- `src/plugins/towers/chipper.rs` — конечный автомат Шаромолки (`Scanning -> Pulling -> Shredding -> Ejecting`), вибрация и спавн частиц.
+- `src/plugins/towers/chipper_fx.rs` — активная способность `Supa-Vac` и обновление частиц выхлопа.
+- `src/plugins/economy.rs` — таймер выплат `Eco`, постановка отправок в очередь, учёт жизней и конца матча.
 - `src/plugins/ai.rs` — Utility AI бота (оценка угроз, строительство, апгрейды, экономика и раши).
 
 ## Интерфейс (`src/ui/`)

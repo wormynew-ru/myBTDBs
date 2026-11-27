@@ -34,7 +34,21 @@ pub enum BloonLayer {
     Green,
     Yellow,
     Pink,
+    Rainbow,
     Ceramic,
+    Moab,
+    Bfb,
+    Zomg,
+}
+
+impl BloonLayer {
+    pub fn is_moab_class(self) -> bool {
+        matches!(self, BloonLayer::Moab | BloonLayer::Bfb | BloonLayer::Zomg)
+    }
+
+    pub fn is_zomg(self) -> bool {
+        self == BloonLayer::Zomg
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -43,6 +57,8 @@ pub enum TowerType {
     Cannon,
     IceTower,
     NinjaMonkey,
+    Bloonchipper,
+    Village,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

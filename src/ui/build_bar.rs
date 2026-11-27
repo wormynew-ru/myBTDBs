@@ -51,7 +51,7 @@ fn spawn_build_bar(mut commands: Commands) {
             // Left: Tower buy buttons
             bar.spawn(Node {
                 flex_direction: FlexDirection::Row,
-                column_gap: Val::Px(6.0),
+                column_gap: Val::Px(4.0),
                 ..default()
             })
             .with_children(|row| {
@@ -62,7 +62,7 @@ fn spawn_build_bar(mut commands: Commands) {
                         Button,
                         BuildBarAction::SelectTower(tower_type),
                         Node {
-                            min_width: Val::Px(78.0),
+                            min_width: Val::Px(62.0),
                             min_height: Val::Px(56.0),
                             justify_content: JustifyContent::Center,
                             align_items: AlignItems::Center,
@@ -77,7 +77,7 @@ fn spawn_build_bar(mut commands: Commands) {
                         btn.spawn((
                             Text::new(label),
                             TextFont {
-                                font_size: 13.0,
+                                font_size: 12.0,
                                 ..default()
                             },
                             TextColor(Color::WHITE),
@@ -89,7 +89,7 @@ fn spawn_build_bar(mut commands: Commands) {
             // Right: Send Bloon packs
             bar.spawn(Node {
                 flex_direction: FlexDirection::Row,
-                column_gap: Val::Px(5.0),
+                column_gap: Val::Px(4.0),
                 ..default()
             })
             .with_children(|row| {
@@ -99,7 +99,7 @@ fn spawn_build_bar(mut commands: Commands) {
                         Button,
                         BuildBarAction::SendPack(idx),
                         Node {
-                            min_width: Val::Px(82.0),
+                            min_width: Val::Px(70.0),
                             min_height: Val::Px(56.0),
                             justify_content: JustifyContent::Center,
                             align_items: AlignItems::Center,
@@ -114,7 +114,7 @@ fn spawn_build_bar(mut commands: Commands) {
                         btn.spawn((
                             Text::new(label),
                             TextFont {
-                                font_size: 11.0,
+                                font_size: 10.5,
                                 ..default()
                             },
                             TextColor(Color::WHITE),

@@ -7,8 +7,10 @@ use crate::core::types::{MatchEntity, Position, Side};
 use crate::data::maps_cfg::{
     map_cfg, waypoints_for_side, ARENA_H, ARENA_W, DIVIDER_HALF, ROAD_WIDTH,
 };
-use crate::data::towers_cfg::{compute_effective_stats, tower_cfg, TOWER_RADIUS};
-use crate::plugins::towers::Tower;
+use crate::data::tower_stats::{apply_village_buff, compute_effective_stats};
+use crate::data::towers_cfg::{tower_cfg, TOWER_RADIUS};
+use crate::plugins::sprites::SpriteAssets;
+use crate::plugins::towers::{Tower, TowerBuff};
 use crate::utils::is_valid_tower_spot;
 
 pub struct MapPlugin;
@@ -47,9 +49,9 @@ fn cleanup_match_entities(
 fn spawn_map_visuals(
     mut commands: Commands,
     settings: Res<MatchSettings>,
+    sprites: Res<SpriteAssets>,
     existing: Query<Entity, With<MatchEntity>>,
 ) {
-    // Ensure clean arena on rematch
     for entity in &existing {
         commands.entity(entity).despawn_recursive();
     }
@@ -97,12 +99,20 @@ fn spawn_map_visuals(
         if let (Some(&entry), Some(&exit)) = (wps.first(), wps.last()) {
             commands.spawn((
                 MatchEntity,
-                Sprite::from_color(Color::srgb(0.10, 0.72, 0.30), Vec2::splat(22.0)),
+                Sprite {
+                    image: sprites.portal_entry.clone(),
+                    custom_size: Some(Vec2::splat(26.0)),
+                    ..default()
+                },
                 Transform::from_xyz(entry.x.clamp(-624.0, 624.0), entry.y.clamp(-255.0, 280.0), 2.0),
             ));
             commands.spawn((
                 MatchEntity,
-                Sprite::from_color(Color::srgb(0.86, 0.16, 0.16), Vec2::splat(22.0)),
+                Sprite {
+                    image: sprites.portal_exit.clone(),
+                    custom_size: Some(Vec2::splat(26.0)),
+                    ..default()
+                },
                 Transform::from_xyz(exit.x.clamp(-624.0, 624.0), exit.y.clamp(-255.0, 280.0), 2.0),
             ));
         }
@@ -215,7 +225,7 @@ fn update_placement_preview(
 
 fn update_range_indicator(
     selected: Res<SelectedTower>,
-    towers: Query<(&Tower, &Position)>,
+    towers: Query<(&Tower, &TowerBuff, &Position)>,
     mut ring_q: Query<(&mut Sprite, &mut Transform, &mut Visibility), With<SelectedRangeRing>>,
 ) {
     let Ok((mut sprite, mut tf, mut vis)) = ring_q.get_single_mut() else {
@@ -223,8 +233,11 @@ fn update_range_indicator(
     };
 
     if let Some(entity) = selected.0 {
-        if let Ok((tower, pos)) = towers.get(entity) {
-            let stats = compute_effective_stats(tower.tower_type, tower.path1, tower.path2);
+        if let Ok((tower, buff, pos)) = towers.get(entity) {
+            let stats = apply_village_buff(
+                compute_effective_stats(tower.tower_type, tower.path1, tower.path2),
+                buff.0,
+            );
             sprite.custom_size = Some(Vec2::splat(stats.range * 2.0));
             tf.translation = Vec3::new(pos.0.x, pos.0.y, 4.0);
             *vis = Visibility::Visible;

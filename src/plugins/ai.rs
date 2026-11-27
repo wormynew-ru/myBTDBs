@@ -1,13 +1,16 @@
 use bevy::prelude::*;
 
-use crate::core::events::{BuildTowerEvent, SendBloonPackEvent, UpgradeTowerEvent};
+use crate::core::events::{
+    ActivateAbilityEvent, BuildTowerEvent, SendBloonPackEvent, UpgradeTowerEvent,
+};
 use crate::core::state::{Difficulty, GameState, MapId, MatchSettings};
 use crate::core::types::{Position, Side, SidesResource, TowerType};
 use crate::data::bloons_cfg::SEND_PACKS;
 use crate::data::maps_cfg::{waypoints_for_side, ARENA_BOTTOM, ARENA_TOP, DIVIDER_HALF, HALF_W};
-use crate::data::towers_cfg::{compute_effective_stats, tower_cfg};
+use crate::data::tower_stats::{apply_village_buff, compute_effective_stats};
+use crate::data::towers_cfg::tower_cfg;
 use crate::plugins::bloons::Bloon;
-use crate::plugins::towers::Tower;
+use crate::plugins::towers::{ChipperState, Tower, TowerBuff};
 use crate::utils::{is_valid_tower_spot, path_total_length};
 
 pub struct AiPlugin;
@@ -76,11 +79,12 @@ fn utility_ai_system(
     settings: Res<MatchSettings>,
     sides: Res<SidesResource>,
     mut ai: ResMut<AiState>,
-    towers: Query<(Entity, &Side, &Tower, &Position)>,
+    towers: Query<(Entity, &Side, &Tower, &TowerBuff, &Position, Option<&ChipperState>)>,
     bloons: Query<(&Side, &Bloon)>,
     mut build_writer: EventWriter<BuildTowerEvent>,
     mut upgrade_writer: EventWriter<UpgradeTowerEvent>,
     mut send_writer: EventWriter<SendBloonPackEvent>,
+    mut ability_writer: EventWriter<ActivateAbilityEvent>,
 ) {
     if settings.paused {
         return;
@@ -100,11 +104,14 @@ fn utility_ai_system(
     let mut player_has_camo = false;
     let mut player_has_lead = false;
 
-    for (entity, side, t, pos) in &towers {
-        let stats = compute_effective_stats(t.tower_type, t.path1, t.path2);
+    for (entity, side, t, buff, pos, chipper) in &towers {
+        let stats = apply_village_buff(
+            compute_effective_stats(t.tower_type, t.path1, t.path2),
+            buff.0,
+        );
         match side {
             Side::Bot => {
-                bot_towers.push((entity, t, stats));
+                bot_towers.push((entity, t, stats, chipper));
                 bot_positions.push(pos.0);
             }
             Side::Player => {
@@ -133,8 +140,23 @@ fn utility_ai_system(
         }
     }
 
-    let bot_has_camo = bot_towers.iter().any(|(_, _, s)| s.can_hit_camo);
-    let bot_has_lead = bot_towers.iter().any(|(_, _, s)| s.can_pop_lead);
+    // Trigger Supa-Vac when Bot is threatened
+    if max_threat > 0.55 {
+        for (entity, t, _, chipper) in &bot_towers {
+            if let Some(c) = chipper {
+                if t.path2 >= 4 && c.supa_vac_cooldown <= 0.0 {
+                    ability_writer.send(ActivateAbilityEvent {
+                        side: Side::Bot,
+                        tower_entity: *entity,
+                    });
+                    break;
+                }
+            }
+        }
+    }
+
+    let bot_has_camo = bot_towers.iter().any(|(_, _, s, _)| s.can_hit_camo);
+    let bot_has_lead = bot_towers.iter().any(|(_, _, s, _)| s.can_pop_lead);
 
     // 1. Starter defense
     if bot_towers.is_empty() && bot_cash >= tower_cfg(TowerType::DartMonkey).cost {
@@ -186,10 +208,20 @@ fn utility_ai_system(
         }
     }
 
+    let can_upgrade = |t: &Tower| {
+        let cfg = tower_cfg(t.tower_type);
+        (t.path1 as usize) < cfg.path1.len() || (t.path2 as usize) < cfg.path2.len()
+    };
+
     // 4. Urgent defense or upgrade
     if max_threat > 0.52 || bot_towers.len() < 2 {
-        if let Some((entity, tower, _)) = bot_towers.iter().find(|(_, t, _)| t.path1 < 3 || t.path2 < 3) {
-            let branch = if tower.path1 <= tower.path2 { 1 } else { 2 };
+        if let Some((entity, tower, _, _)) = bot_towers.iter().find(|(_, t, _, _)| can_upgrade(t)) {
+            let cfg = tower_cfg(tower.tower_type);
+            let branch = if (tower.path1 as usize) < cfg.path1.len() && tower.path1 <= tower.path2 {
+                1
+            } else {
+                2
+            };
             upgrade_writer.send(UpgradeTowerEvent {
                 side: Side::Bot,
                 tower_entity: *entity,
@@ -198,10 +230,12 @@ fn utility_ai_system(
             return;
         }
         if let Some(pos) = find_best_bot_spot(settings.map_id, &bot_positions) {
-            let pick = match bot_towers.len() % 4 {
+            let pick = match bot_towers.len() % 6 {
                 1 => TowerType::Cannon,
-                2 => TowerType::NinjaMonkey,
-                3 => TowerType::IceTower,
+                2 => TowerType::Bloonchipper,
+                3 => TowerType::NinjaMonkey,
+                4 => TowerType::IceTower,
+                5 => TowerType::Village,
                 _ => TowerType::DartMonkey,
             };
             if bot_cash >= tower_cfg(pick).cost {
@@ -231,6 +265,13 @@ fn utility_ai_system(
             });
             return;
         }
+        if settings.difficulty == Difficulty::Hard && sides.wave >= 11 && bot_cash >= SEND_PACKS[8].cost {
+            send_writer.send(SendBloonPackEvent {
+                sender: Side::Bot,
+                pack_index: 8,
+            });
+            return;
+        }
         if settings.difficulty == Difficulty::Hard && sides.wave >= 8 && bot_cash >= SEND_PACKS[7].cost {
             send_writer.send(SendBloonPackEvent {
                 sender: Side::Bot,
@@ -257,8 +298,13 @@ fn utility_ai_system(
     }
 
     // 7. Steady upgrade
-    if let Some((entity, tower, _)) = bot_towers.iter().find(|(_, t, _)| t.path1 < 3 || t.path2 < 3) {
-        let branch = if tower.path1 <= tower.path2 { 1 } else { 2 };
+    if let Some((entity, tower, _, _)) = bot_towers.iter().find(|(_, t, _, _)| can_upgrade(t)) {
+        let cfg = tower_cfg(tower.tower_type);
+        let branch = if (tower.path1 as usize) < cfg.path1.len() && tower.path1 <= tower.path2 {
+            1
+        } else {
+            2
+        };
         upgrade_writer.send(UpgradeTowerEvent {
             side: Side::Bot,
             tower_entity: *entity,

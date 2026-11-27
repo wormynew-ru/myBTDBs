@@ -134,14 +134,17 @@ fn despawn_hud(mut commands: Commands, query: Query<Entity, With<HudRoot>>) {
 fn update_hud_texts(
     sides: Res<SidesResource>,
     settings: Res<MatchSettings>,
+    send_q: Res<crate::plugins::bloons::SendPackQueue>,
     mut player_q: Query<&mut Text, (With<PlayerHudText>, Without<WaveHudText>, Without<BotHudText>)>,
     mut wave_q: Query<&mut Text, (With<WaveHudText>, Without<PlayerHudText>, Without<BotHudText>)>,
     mut bot_q: Query<&mut Text, (With<BotHudText>, Without<PlayerHudText>, Without<WaveHudText>)>,
 ) {
     if let Ok(mut text) = player_q.get_single_mut() {
+        let q_bot = send_q.count_for(crate::core::types::Side::Bot);
+        let q_tag = if q_bot > 0 { format!(" | Q:{}", q_bot) } else { String::new() };
         **text = format!(
-            "YOU | HP: {} | ${} | Eco: {}",
-            sides.player.lives, sides.player.cash, sides.player.eco
+            "YOU | HP: {} | ${} | Eco: {}{}",
+            sides.player.lives, sides.player.cash, sides.player.eco, q_tag
         );
     }
     if let Ok(mut text) = wave_q.get_single_mut() {
@@ -152,9 +155,11 @@ fn update_hud_texts(
         );
     }
     if let Ok(mut text) = bot_q.get_single_mut() {
+        let q_pl = send_q.count_for(crate::core::types::Side::Player);
+        let q_tag = if q_pl > 0 { format!(" | Q:{}", q_pl) } else { String::new() };
         **text = format!(
-            "BOT | HP: {} | ${} | Eco: {}",
-            sides.bot.lives, sides.bot.cash, sides.bot.eco
+            "BOT | HP: {} | ${} | Eco: {}{}",
+            sides.bot.lives, sides.bot.cash, sides.bot.eco, q_tag
         );
     }
 }

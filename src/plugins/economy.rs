@@ -5,7 +5,7 @@ use crate::core::state::{GameState, MatchResult, MatchSettings};
 use crate::core::types::{Side, SideEconomy, SidesResource};
 use crate::data::bloons_cfg::{SEND_PACKS, WAVE_DURATION_SECS};
 use crate::data::towers_cfg::{ECO_INTERVAL_SECS, STARTING_CASH, STARTING_ECO, STARTING_LIVES};
-use crate::plugins::bloons::{QueuedSpawn, SpawnQueue};
+use crate::plugins::bloons::{QueuedSendPack, SendPackQueue};
 
 pub struct EconomyPlugin;
 
@@ -67,14 +67,20 @@ fn eco_payout_system(
 
 fn handle_send_bloon_packs(
     mut sides: ResMut<SidesResource>,
-    mut queue: ResMut<SpawnQueue>,
+    mut send_q: ResMut<SendPackQueue>,
     mut reader: EventReader<SendBloonPackEvent>,
 ) {
+    const MAX_QUEUED_PACKS: usize = 12;
+
     for ev in reader.read() {
         let Some(pack) = SEND_PACKS.get(ev.pack_index) else {
             continue;
         };
-        if sides.wave < pack.unlock_wave || sides.get(ev.sender).cash < pack.cost {
+        let target = ev.sender.opponent();
+        if sides.wave < pack.unlock_wave
+            || sides.get(ev.sender).cash < pack.cost
+            || send_q.count_for(target) >= MAX_QUEUED_PACKS
+        {
             continue;
         }
         {
@@ -83,24 +89,15 @@ fn handle_send_bloon_packs(
             econ.eco += pack.eco_gain;
         }
 
-        let target = ev.sender.opponent();
-        let mut base_delay = 0.05_f32;
-        for item in &queue.items {
-            if item.side == target && item.from_send && item.delay > base_delay {
-                base_delay = (item.delay + 0.12).min(1.5);
-            }
-        }
-
-        for i in 0..pack.count {
-            queue.items.push(QueuedSpawn {
-                side: target,
-                layer: pack.layer,
-                camo: pack.camo,
-                lead: pack.lead,
-                delay: base_delay + (i as f32) * pack.spacing,
-                from_send: true,
-            });
-        }
+        let (queue, _) = send_q.queue_for_mut(target);
+        queue.push_back(QueuedSendPack {
+            layer: pack.layer,
+            camo: pack.camo,
+            lead: pack.lead,
+            remaining: pack.count,
+            spacing: pack.spacing,
+            timer: 0.05,
+        });
     }
 }
 
