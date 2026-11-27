@@ -2,6 +2,7 @@ use bevy::prelude::*;
 
 use crate::core::types::TowerType;
 
+#[path = "towers_cfg_extra.rs"]
 mod towers_cfg_extra;
 
 pub const STARTING_LIVES: i32 = 150;

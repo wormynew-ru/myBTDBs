@@ -1,5 +1,9 @@
 # CHANGELOG.md — История изменений
 
+## [0.7.1] — Исправление пути модуля `towers_cfg_extra`
+### Исправлено
+- `src/data/towers_cfg.rs`: добавлен атрибут `#[path = "towers_cfg_extra.rs"]` над `mod towers_cfg_extra;` для устранения ошибки компиляции `error[E0583]`.
+
 ## [0.7.0] — Ферма (Banana Farm), дальность 1.5× и Stop-and-Shoot для юнитов
 ### Добавлено
 - **Новая башня — Ферма (`TowerType::Farm`, `src/data/towers_cfg_extra.rs`, `src/plugins/towers/farm.rs`):** цена `550`, радиус `45.0`, не атакует шары, приносит `+$45` каждые `4.5` с со всплывающим зелёным текстом дохода над постройкой.
