@@ -153,7 +153,7 @@ fn process_spawn_queue(
     }
     let dt = time.delta_secs() * settings.speed_mult;
     let mut remaining = Vec::with_capacity(queue.items.len());
-    for mut item in queue.items.drain(..) {
+    for mut item in std::mem::take(&mut queue.items) {
         item.delay -= dt;
         if item.delay <= 0.0 {
             writer.send(SpawnBloonEvent {

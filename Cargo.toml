@@ -9,7 +9,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 bevy = { version = "0.15", default-features = false, features = [
-    "android-game-activity",
+    "android-native-activity",
     "bevy_asset",
     "bevy_color",
     "bevy_core_pipeline",

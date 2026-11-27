@@ -195,7 +195,7 @@ pub fn chipper_fsm_system(
         let mut still_shredding = Vec::new();
         let wps = if *t_side == Side::Player { &player_wps } else { &bot_wps };
 
-        for mut slot in chipper.shredding.drain(..) {
+        for mut slot in std::mem::take(&mut chipper.shredding) {
             let Ok((b_e, _, mut b, mut hp, mut b_pos, mut b_tf, mut b_vis)) = bloons.get_mut(slot.bloon) else {
                 continue;
             };

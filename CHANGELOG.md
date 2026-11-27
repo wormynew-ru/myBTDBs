@@ -1,5 +1,11 @@
 # CHANGELOG.md — История изменений
 
+## [0.4.1] — Статический аудит Rust и совместимости с Bevy 0.15
+### Исправлено
+- `src/plugins/towers/chipper.rs` и `src/plugins/bloons.rs`: циклы `.drain(..)` по полям структур (`chipper.shredding.drain(..)` и `queue.items.drain(..)`) заменены на `std::mem::take` для исключения конфликтов заимствования.
+- `src/plugins/towers/combat.rs` и `src/plugins/towers/spikes.rs`: добавлены явные фильтры непересекаемости запросов (`Without<Tower>`, `Without<Projectile>`, `Without<Bloon>`, `Without<SpikePile>`) в `tower_attack_system`, `projectile_update_system` и `spike_piles_system`, а также проверки `hp.current <= 0` от повторного урона в одном кадре (при соблюдении лимита ≤ 350 строк на файл).
+- `Cargo.toml`: фича `android-game-activity` заменена на `android-native-activity` для корректной сборки Android APK через `cargo-apk` и `NativeActivity`.
+
 ## [0.4.0] — Башня «Фабрика шипов» (Spike Factory)
 ### Добавлено
 - Конфиг и дерево апгрейдов `2×4` для `TowerType::SpikeFactory` (`src/data/towers_cfg.rs`, `src/data/tower_stats.rs`): базовая цена `500`, интервал `1.6` с, радиус `75.0`, `5` зарядов, детекция Camo; Ветка 1 (`10` шипов -> `2` урона + Lead -> `14` шипов / `3` урона / `+3` по Ceramic -> огненный взрыв `Spiked Mines`), Ветка 2 (ускорение +25%/+35% -> `Long Life 90s` без сброса волной -> `Spike Storm` каждые `18` с по всей дороге).

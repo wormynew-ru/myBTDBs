@@ -203,12 +203,12 @@ pub fn spike_piles_system(
     settings: Res<MatchSettings>,
     sides: Res<SidesResource>,
     mut last_wave: Local<u32>,
-    mut piles: Query<(Entity, &Side, &Position, &mut SpikePile, &mut Sprite), Without<Bloon>>,
+    mut piles: Query<(Entity, &Side, &Position, &mut SpikePile, &mut Sprite), (Without<Bloon>, Without<Tower>)>,
     mut bloons: Query<
         (Entity, &Side, &mut Bloon, &mut Health, &Position),
         (Without<SpikePile>, Without<Tower>),
     >,
-    mut towers: Query<&mut Tower>,
+    mut towers: Query<&mut Tower, (Without<SpikePile>, Without<Bloon>)>,
     mut spawn_writer: EventWriter<SpawnBloonEvent>,
     mut pop_writer: EventWriter<BloonPoppedEvent>,
 ) {

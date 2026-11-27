@@ -18,14 +18,11 @@ fn select_target(
     priority: TargetPriority,
     range: f32,
     can_hit_camo: bool,
-    bloons: &Query<(Entity, &Side, &mut Bloon, &mut Health, &Position)>,
+    bloons: &Query<(Entity, &Side, &mut Bloon, &mut Health, &Position), Without<Tower>>,
 ) -> Option<(Entity, Vec2)> {
     let mut best: Option<(Entity, Vec2, f32)> = None;
-    for (entity, b_side, bloon, _, b_pos) in bloons.iter() {
-        if *b_side != side
-            || bloon.is_inside_chipper
-            || (bloon.camo && !can_hit_camo)
-        {
+    for (entity, b_side, bloon, hp, b_pos) in bloons.iter() {
+        if *b_side != side || hp.current <= 0 || bloon.is_inside_chipper || (bloon.camo && !can_hit_camo) {
             continue;
         }
         let d = tower_pos.distance(b_pos.0);
@@ -54,7 +51,7 @@ pub fn tower_attack_system(
     settings: Res<MatchSettings>,
     sprites: Res<SpriteAssets>,
     mut towers: Query<(Entity, &Side, &mut Tower, &TowerBuff, &Position, &mut Transform)>,
-    mut bloons: Query<(Entity, &Side, &mut Bloon, &mut Health, &Position)>,
+    mut bloons: Query<(Entity, &Side, &mut Bloon, &mut Health, &Position), Without<Tower>>,
     mut spawn_writer: EventWriter<SpawnBloonEvent>,
     mut pop_writer: EventWriter<BloonPoppedEvent>,
 ) {
@@ -78,21 +75,17 @@ pub fn tower_attack_system(
         );
 
         if tower.tower_type == TowerType::IceTower {
-            let any_in_range = bloons.iter().any(|(_, bs, b, _, bp)| {
-                *bs == *t_side
-                    && !b.is_inside_chipper
-                    && (!b.camo || stats.can_hit_camo)
-                    && t_pos.0.distance(bp.0) <= stats.range
+            let any_in_range = bloons.iter().any(|(_, bs, b, hp, bp)| {
+                *bs == *t_side && hp.current > 0 && !b.is_inside_chipper
+                    && (!b.camo || stats.can_hit_camo) && t_pos.0.distance(bp.0) <= stats.range
             });
             if !any_in_range {
                 continue;
             }
             tower.cooldown = 1.0 / stats.fire_rate;
             for (b_entity, bs, mut bloon, mut hp, bp) in &mut bloons {
-                if *bs != *t_side
-                    || bloon.is_inside_chipper
-                    || (bloon.camo && !stats.can_hit_camo)
-                    || t_pos.0.distance(bp.0) > stats.splash_radius
+                if *bs != *t_side || hp.current <= 0 || bloon.is_inside_chipper
+                    || (bloon.camo && !stats.can_hit_camo) || t_pos.0.distance(bp.0) > stats.splash_radius
                 {
                     continue;
                 }
@@ -197,8 +190,8 @@ pub fn projectile_update_system(
     time: Res<Time>,
     settings: Res<MatchSettings>,
     mut projectiles: Query<(Entity, &Side, &mut Projectile, &mut Position, &mut Transform)>,
-    mut bloons: Query<(Entity, &Side, &mut Bloon, &mut Health, &Position), Without<Projectile>>,
-    mut towers: Query<&mut Tower>,
+    mut bloons: Query<(Entity, &Side, &mut Bloon, &mut Health, &Position), (Without<Projectile>, Without<Tower>)>,
+    mut towers: Query<&mut Tower, (Without<Projectile>, Without<Bloon>)>,
     mut spawn_writer: EventWriter<SpawnBloonEvent>,
     mut pop_writer: EventWriter<BloonPoppedEvent>,
 ) {
@@ -223,11 +216,9 @@ pub fn projectile_update_system(
         }
 
         let mut hit_target = None;
-        for (b_entity, b_side, bloon, _, b_pos) in bloons.iter() {
-            if *b_side != *p_side
-                || bloon.is_inside_chipper
-                || (bloon.camo && !proj.can_hit_camo)
-                || proj.hit_ids.contains(&b_entity)
+        for (b_entity, b_side, bloon, hp, b_pos) in bloons.iter() {
+            if *b_side != *p_side || hp.current <= 0 || bloon.is_inside_chipper
+                || (bloon.camo && !proj.can_hit_camo) || proj.hit_ids.contains(&b_entity)
             {
                 continue;
             }
@@ -245,7 +236,7 @@ pub fn projectile_update_system(
         let mut src_tower = towers.get_mut(proj.source_tower).ok();
         if proj.splash_radius > 0.0 {
             for (b_entity, b_side, mut bloon, mut hp, b_pos) in &mut bloons {
-                if *b_side != *p_side || bloon.is_inside_chipper || (bloon.camo && !proj.can_hit_camo) {
+                if *b_side != *p_side || hp.current <= 0 || bloon.is_inside_chipper || (bloon.camo && !proj.can_hit_camo) {
                     continue;
                 }
                 let r = bloon_cfg(bloon.layer).size * 0.5;
@@ -276,7 +267,7 @@ pub fn projectile_update_system(
             if proj.knockback_chance > 0.0 && (proj.life * 100.0).fract() < proj.knockback_chance {
                 bloon.path_progress = (bloon.path_progress - 26.0).max(0.0);
             }
-            if !bloon.lead || proj.can_pop_lead {
+            if (!bloon.lead || proj.can_pop_lead) && hp.current > 0 {
                 apply_damage(
                     &mut commands,
                     first_hit,
