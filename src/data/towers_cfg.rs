@@ -39,11 +39,12 @@ pub struct TowerCfg {
     pub path2: &'static [UpgradeCfg],
 }
 
-pub const ALL_TOWERS: [TowerType; 11] = [
+pub const ALL_TOWERS: [TowerType; 17] = [
     TowerType::DartMonkey,
     TowerType::Cannon,
     TowerType::IceTower,
     TowerType::NinjaMonkey,
+    TowerType::GlueGunner,
     TowerType::Bloonchipper,
     TowerType::Village,
     TowerType::SpikeFactory,
@@ -51,6 +52,11 @@ pub const ALL_TOWERS: [TowerType; 11] = [
     TowerType::MilitaryBase,
     TowerType::CrookBoss,
     TowerType::Farm,
+    TowerType::SoulEater,
+    TowerType::Necromancer,
+    TowerType::Saboteur,
+    TowerType::ScrapCollector,
+    TowerType::MirageGenerator,
 ];
 
 pub fn tower_cfg(tower_type: TowerType) -> TowerCfg {
@@ -225,7 +231,7 @@ pub fn tower_cfg(tower_type: TowerType) -> TowerCfg {
             short_name: "Spikes",
             cost: 500,
             range: 75.0,
-            fire_rate: 0.625,
+            fire_rate: 0.625 / 1.30,
             damage: 1,
             pierce: 5,
             proj_speed: 0.0,
@@ -251,6 +257,12 @@ pub fn tower_cfg(tower_type: TowerType) -> TowerCfg {
         TowerType::Commander
         | TowerType::MilitaryBase
         | TowerType::CrookBoss
-        | TowerType::Farm => towers_cfg_extra::extra_tower_cfg(tower_type),
+        | TowerType::Farm
+        | TowerType::GlueGunner
+        | TowerType::SoulEater
+        | TowerType::Necromancer
+        | TowerType::Saboteur
+        | TowerType::ScrapCollector
+        | TowerType::MirageGenerator => towers_cfg_extra::extra_tower_cfg(tower_type),
     }
 }

@@ -1,3 +1,4 @@
+mod buffs;
 mod chipper;
 mod chipper_fx;
 mod combat;
@@ -5,7 +6,13 @@ mod combat_proj;
 mod commander;
 mod crook_boss;
 mod farm;
+mod glue;
 mod military_base;
+mod mirage;
+mod necromancer;
+mod saboteur;
+mod scrap_collector;
+mod soul_eater;
 mod spikes;
 mod spikes_fx;
 mod units;
@@ -19,23 +26,30 @@ use crate::core::events::{
 use crate::core::state::{GameState, MatchSettings, SelectedTower};
 use crate::core::types::{MatchEntity, Position, Side, SidesResource, TargetPriority, TowerType};
 use crate::data::maps_cfg::waypoints_for_side;
-use crate::data::tower_stats::VillageBuff;
+use crate::data::tower_stats::{compute_effective_stats, VillageBuff};
 use crate::data::towers_cfg::{tower_cfg, SELL_REFUND_RATIO, TOWER_RADIUS};
+use crate::plugins::bloons::Bloon;
 use crate::plugins::sprites::SpriteAssets;
 use crate::utils::is_valid_tower_spot;
 
+use buffs::update_tower_buffs_system;
 pub use chipper::{ChipperState, ShredParticle};
 use chipper::chipper_fsm_system;
 use chipper_fx::{shred_particle_system, supa_vac_system};
 use combat::tower_attack_system;
 use combat_proj::projectile_update_system;
 use commander::{
-    bodyguard_system, call_to_arms_fx_system, commander_ability_and_guards_system,
-    update_tower_buffs_system, CommanderState,
+    bodyguard_system, call_to_arms_fx_system, commander_ability_and_guards_system, CommanderState,
 };
 use crook_boss::{crook_boss_spawn_system, CrookBossState};
 use farm::{farm_income_fx_system, farm_tick_system, FarmState};
+pub use glue::{apply_glue_to_bloon, glue_corrosive_and_cooldown_system, spawn_glue_striker_fx, GluePayload, GlueState};
 use military_base::{military_base_spawn_system, MilitaryBaseState};
+pub use mirage::{mirage_generator_system, MirageGeneratorState};
+pub use necromancer::{necromancer_system, NecromancerState};
+pub use saboteur::{handle_saboteur_ability, saboteur_system, SaboteurState};
+pub use scrap_collector::{scrap_collector_system, ScrapCollectorState};
+pub use soul_eater::{soul_eater_system, SoulEaterState};
 use spikes::{spike_factory_produce_system, spike_piles_system, SpikeFactoryState};
 use spikes_fx::spike_explosion_fx_system;
 use units::path_units_system;
@@ -54,6 +68,7 @@ impl Plugin for TowersPlugin {
                     handle_sell_tower,
                     handle_priority_change,
                     handle_activate_ability,
+                    handle_saboteur_ability,
                     update_tower_buffs_system,
                     commander_ability_and_guards_system,
                     bodyguard_system,
@@ -70,11 +85,17 @@ impl Plugin for TowersPlugin {
                     path_units_system,
                     unit_explosion_fx_system,
                     projectile_update_system,
+                    glue_corrosive_and_cooldown_system,
                     spike_factory_produce_system,
                     spike_piles_system,
                     spike_explosion_fx_system,
                     farm_tick_system,
                     farm_income_fx_system,
+                    soul_eater_system,
+                    necromancer_system,
+                    saboteur_system,
+                    scrap_collector_system,
+                    mirage_generator_system,
                 )
                     .chain(),
             )
@@ -94,6 +115,7 @@ pub struct Tower {
     pub total_invested: i32,
     pub pops: u32,
     pub shot_count: u32,
+    pub jammed_timer: f32,
 }
 
 #[derive(Component, Debug, Clone, Copy, Default)]
@@ -112,6 +134,7 @@ pub struct Projectile {
     pub stun_duration: f32,
     pub ceramic_bonus: i32,
     pub moab_bonus: i32,
+    pub glue: Option<GluePayload>,
     pub life: f32,
     pub hit_ids: Vec<Entity>,
 }
@@ -155,6 +178,7 @@ fn handle_build_tower(
                 total_invested: cfg.cost,
                 pops: 0,
                 shot_count: 0,
+                jammed_timer: 0.0,
             },
             TowerBuff::default(),
             Position(ev.pos),
@@ -182,6 +206,22 @@ fn handle_build_tower(
             entity_cmds.insert(CrookBossState::default());
         } else if ev.tower_type == TowerType::Farm {
             entity_cmds.insert(FarmState::default());
+        } else if ev.tower_type == TowerType::GlueGunner {
+            entity_cmds.insert(GlueState::default());
+        } else if ev.tower_type == TowerType::SoulEater {
+            entity_cmds.insert(SoulEaterState::default());
+        } else if ev.tower_type == TowerType::Necromancer {
+            entity_cmds.insert(NecromancerState::default());
+        } else if ev.tower_type == TowerType::Saboteur {
+            let seed = (ev.pos.x.to_bits() ^ ev.pos.y.to_bits().rotate_left(9)) | 1;
+            entity_cmds.insert(SaboteurState {
+                rng_state: seed,
+                ..default()
+            });
+        } else if ev.tower_type == TowerType::ScrapCollector {
+            entity_cmds.insert(ScrapCollectorState::default());
+        } else if ev.tower_type == TowerType::MirageGenerator {
+            entity_cmds.insert(MirageGeneratorState::default());
         }
 
         let entity = entity_cmds.id();
@@ -201,7 +241,7 @@ fn handle_upgrade_tower(
         let Ok((side, mut tower, mut sprite)) = towers.get_mut(ev.tower_entity) else {
             continue;
         };
-        if *side != ev.side {
+        if *side != ev.side || tower.jammed_timer > 0.0 {
             continue;
         }
         let cfg = tower_cfg(tower.tower_type);
@@ -259,12 +299,16 @@ fn handle_priority_change(
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn handle_activate_ability(
-    mut query: Query<(&Side, &Tower, &mut ChipperState)>,
+    mut commands: Commands,
+    mut chippers: Query<(&Side, &Tower, &mut ChipperState)>,
+    mut gluers: Query<(&Side, &Tower, &mut GlueState), Without<ChipperState>>,
+    mut bloons: Query<(&Side, &mut Bloon), (Without<ChipperState>, Without<GlueState>)>,
     mut reader: EventReader<ActivateAbilityEvent>,
 ) {
     for ev in reader.read() {
-        if let Ok((side, tower, mut chipper)) = query.get_mut(ev.tower_entity) {
+        if let Ok((side, tower, mut chipper)) = chippers.get_mut(ev.tower_entity) {
             if *side == ev.side
                 && tower.tower_type == TowerType::Bloonchipper
                 && tower.path2 >= 4
@@ -272,6 +316,30 @@ fn handle_activate_ability(
             {
                 chipper.supa_vac_active = 7.0;
                 chipper.supa_vac_cooldown = 28.0;
+            }
+            continue;
+        }
+        if let Ok((side, tower, mut glue_state)) = gluers.get_mut(ev.tower_entity) {
+            if *side == ev.side
+                && tower.tower_type == TowerType::GlueGunner
+                && tower.path2 >= 4
+                && glue_state.striker_cooldown <= 0.0
+            {
+                let stats = compute_effective_stats(tower.tower_type, tower.path1, tower.path2);
+                glue_state.striker_cooldown = 25.0;
+                let payload = GluePayload {
+                    duration: 10.0,
+                    soak: stats.glue_soak,
+                    corrosive_dmg: stats.glue_corrosive_dmg,
+                    corrosive_interval: stats.glue_corrosive_interval,
+                    moab_capable: true,
+                };
+                for (b_side, mut bloon) in &mut bloons {
+                    if *b_side == ev.side && !bloon.is_inside_chipper {
+                        apply_glue_to_bloon(&mut bloon, ev.tower_entity, payload);
+                    }
+                }
+                spawn_glue_striker_fx(&mut commands, ev.side);
             }
         }
     }

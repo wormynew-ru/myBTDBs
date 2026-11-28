@@ -166,6 +166,7 @@ pub fn military_base_spawn_system(
                                 b_e,
                                 *side,
                                 b,
+                                bp.0,
                                 &mut hp,
                                 dmg,
                                 Some(&mut tower),

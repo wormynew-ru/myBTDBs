@@ -45,11 +45,11 @@ pub struct SendPackCfg {
 }
 
 pub fn wave_ramp_multipliers(wave: u32) -> (f32, f32) {
-    if wave <= 30 {
+    if wave < 30 {
         (1.0, 1.0)
     } else {
-        let extra = (wave - 30) as f32;
-        (1.0 + 0.12 * extra, 1.0 + 0.02 * extra)
+        let extra = (wave - 29) as f32;
+        (1.0 + 0.22 * extra, 1.0 + 0.03 * extra)
     }
 }
 

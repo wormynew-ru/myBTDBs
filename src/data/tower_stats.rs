@@ -2,6 +2,9 @@ use crate::core::types::TowerType;
 
 use super::towers_cfg::tower_cfg;
 
+#[path = "tower_stats_extra.rs"]
+mod tower_stats_extra;
+
 #[derive(Debug, Clone, Copy)]
 pub struct VillageBuff {
     pub camo: bool,
@@ -86,6 +89,39 @@ pub struct EffectiveStats {
     pub farm_send_discount: f32,
     pub farm_dividend_cash: i32,
     pub farm_dividend_interval: f32,
+    // Glue Gunner stats
+    pub glue_soak: bool,
+    pub glue_corrosive_dmg: i32,
+    pub glue_corrosive_interval: f32,
+    pub glue_ceramic_bonus: i32,
+    pub glue_moab_capable: bool,
+    pub has_glue_striker: bool,
+    // Necromancer stats
+    pub soul_capacity: u32,
+    pub rift_interval: f32,
+    pub ghost_camo: bool,
+    pub ghost_lead: bool,
+    pub ghost_speed_mult: f32,
+    pub ghost_hp: i32,
+    pub summon_ghost_knight: bool,
+    // Saboteur stats
+    pub saboteur_jam_duration: f32,
+    pub saboteur_jam_targets: usize,
+    pub saboteur_ability_cd: f32,
+    pub saboteur_slow: f32,
+    // Scrap Collector stats
+    pub scrap_cash: i32,
+    pub scrap_moab_cash: i32,
+    pub scrap_max_speed_bonus: f32,
+    pub scrap_heat_decay: f32,
+    pub scrap_pierce_bonus: u32,
+    // Mirage Generator stats
+    pub mirage_interval: f32,
+    pub mirage_count: u8,
+    pub mirage_speed_mult: f32,
+    pub mirage_force_zomg: bool,
+    pub mirage_flash_radius: f32,
+    pub mirage_flash_duration: f32,
 }
 
 pub fn compute_effective_stats(
@@ -124,7 +160,7 @@ pub fn compute_effective_stats(
         aura_range_mult: 1.0,
         aura_pierce_bonus: 0,
         aura_damage_bonus: 0,
-        spike_life: 35.0,
+        spike_life: 15.0,
         ceramic_bonus_damage: 0,
         spike_persist_waves: false,
         spike_explode: false,
@@ -138,15 +174,43 @@ pub fn compute_effective_stats(
         has_airstrike: false,
         moab_bonus_damage: 0,
         is_golden_boss: false,
-        summon_interval: 14.0,
+        summon_interval: 18.9,
         summon_count: 1,
         crook_tier: 0,
-        farm_cash: 45,
+        farm_cash: 18,
         farm_interval: 4.5,
         farm_eco_bonus: 0,
         farm_send_discount: 0.0,
         farm_dividend_cash: 0,
         farm_dividend_interval: 15.0,
+        glue_soak: false,
+        glue_corrosive_dmg: 0,
+        glue_corrosive_interval: 0.0,
+        glue_ceramic_bonus: 0,
+        glue_moab_capable: false,
+        has_glue_striker: false,
+        soul_capacity: 30,
+        rift_interval: 10.0,
+        ghost_camo: false,
+        ghost_lead: false,
+        ghost_speed_mult: 1.0,
+        ghost_hp: 2,
+        summon_ghost_knight: false,
+        saboteur_jam_duration: 5.0,
+        saboteur_jam_targets: 1,
+        saboteur_ability_cd: 25.0,
+        saboteur_slow: 1.0,
+        scrap_cash: 3,
+        scrap_moab_cash: 25,
+        scrap_max_speed_bonus: 0.15,
+        scrap_heat_decay: 3.5,
+        scrap_pierce_bonus: 0,
+        mirage_interval: 16.0,
+        mirage_count: 1,
+        mirage_speed_mult: 1.0,
+        mirage_force_zomg: false,
+        mirage_flash_radius: 0.0,
+        mirage_flash_duration: 0.0,
     };
 
     match tower_type {
@@ -207,7 +271,7 @@ pub fn compute_effective_stats(
             if path1 >= 4 { s.spike_explode = true; s.splash_radius = 68.0; }
             if path2 >= 1 { s.fire_rate *= 1.25; }
             if path2 >= 2 { s.fire_rate *= 1.35; }
-            if path2 >= 3 { s.spike_life = 90.0; s.spike_persist_waves = true; }
+            if path2 >= 3 { s.spike_life = 32.0; s.spike_persist_waves = true; }
             if path2 >= 4 { s.has_spike_storm = true; }
         }
         TowerType::Commander => {
@@ -220,56 +284,16 @@ pub fn compute_effective_stats(
             if path2 >= 3 { s.guard_count = 2; }
             if path2 >= 4 { s.guard_elite = true; s.damage += 1; s.can_pop_lead = true; }
         }
-        TowerType::MilitaryBase => {
-            if path1 >= 1 { s.unit_hp = 75; s.unit_speed = 90.0; s.unit_tier = 1; }
-            if path1 >= 2 { s.unit_hp = 160; s.unit_speed = 82.0; s.unit_tier = 2; s.can_pop_lead = true; }
-            if path1 >= 3 { s.unit_hp = 450; s.unit_speed = 68.0; s.unit_tier = 3; }
-            if path1 >= 4 { s.unit_hp = 1400; s.unit_speed = 62.0; s.unit_tier = 4; }
-            let spawn_secs = match path2 {
-                0 => 12.0,
-                1 => 10.2,
-                2 => 8.8,
-                3 => 7.6,
-                _ => 6.5,
-            };
-            s.fire_rate = 1.0 / spawn_secs;
-            if path2 >= 1 { s.unit_speed *= 1.15; }
-            if path2 >= 2 { s.unit_speed *= 1.13; }
-            if path2 >= 3 { s.unit_speed *= 1.12; s.unit_hp = ((s.unit_hp as f32) * 1.20).round() as i32; }
-            if path2 >= 4 { s.unit_speed *= 1.10; s.has_airstrike = true; }
-        }
-        TowerType::CrookBoss => {
-            if path1 >= 1 { s.fire_rate *= 1.25; s.range += 22.0; }
-            if path1 >= 2 { s.fire_rate *= 2.40; s.proj_speed = 620.0; }
-            if path1 >= 3 {
-                s.can_pop_lead = true;
-                s.ceramic_bonus_damage = 2;
-                s.moab_bonus_damage = 2;
-            }
-            if path1 >= 4 {
-                s.fire_rate *= 1.90;
-                s.damage += 2;
-                s.pierce = 4;
-                s.is_golden_boss = true;
-            }
-            if path2 >= 1 { s.can_hit_camo = true; }
-            if path2 >= 2 { s.summon_interval = 10.0; s.crook_tier = 1; }
-            if path2 >= 3 { s.summon_count = 2; s.crook_tier = 2; }
-            if path2 >= 4 { s.summon_interval = 9.0; s.summon_count = 1; s.crook_tier = 3; }
-        }
-        TowerType::Farm => {
-            if path1 >= 1 { s.farm_interval = 3.5; s.farm_cash = 55; }
-            if path1 >= 2 { s.farm_cash = 95; }
-            if path1 >= 3 { s.farm_interval = 3.2; s.farm_cash = 175; }
-            if path1 >= 4 { s.farm_interval = 3.0; s.farm_cash = 340; }
-            if path2 >= 1 { s.farm_eco_bonus = 12; }
-            if path2 >= 2 { s.farm_eco_bonus = 28; s.farm_send_discount = 0.05; }
-            if path2 >= 3 { s.farm_eco_bonus = 60; }
-            if path2 >= 4 {
-                s.farm_eco_bonus = 135;
-                s.farm_dividend_cash = 400;
-                s.farm_dividend_interval = 15.0;
-            }
+        TowerType::MilitaryBase
+        | TowerType::CrookBoss
+        | TowerType::Farm
+        | TowerType::GlueGunner
+        | TowerType::SoulEater
+        | TowerType::Necromancer
+        | TowerType::Saboteur
+        | TowerType::ScrapCollector
+        | TowerType::MirageGenerator => {
+            tower_stats_extra::apply_extra_stats(tower_type, path1, path2, &mut s);
         }
     }
 

@@ -9,6 +9,7 @@ use crate::plugins::bloons::Bloon;
 use crate::plugins::sprites::SpriteAssets;
 
 use super::combat_proj::apply_damage;
+use super::glue::GluePayload;
 use super::{Projectile, Tower, TowerBuff};
 
 fn select_target(
@@ -37,9 +38,50 @@ fn select_target(
             TargetPriority::Last => -bloon.path_progress,
             TargetPriority::Close => -d,
             TargetPriority::Strong => {
-                (bloon_cfg(bloon.layer).rbe as f32) * 10000.0 + bloon.path_progress
+                let mirage_bias = if bloon.is_mirage { 5000.0 } else { 0.0 };
+                (bloon_cfg(bloon.layer).rbe as f32) * 10000.0 + mirage_bias + bloon.path_progress
             }
         };
+        if best.map_or(true, |(_, _, b_score)| score > b_score) {
+            best = Some((entity, b_pos.0, score));
+        }
+    }
+    best.map(|(e, p, _)| (e, p))
+}
+
+fn select_glue_target(
+    tower_pos: Vec2,
+    side: Side,
+    priority: TargetPriority,
+    range: f32,
+    can_hit_camo: bool,
+    moab_capable: bool,
+    bloons: &Query<(Entity, &Side, &mut Bloon, &mut Health, &Position), Without<Tower>>,
+) -> Option<(Entity, Vec2)> {
+    let mut best: Option<(Entity, Vec2, f32)> = None;
+    for (entity, b_side, bloon, hp, b_pos) in bloons.iter() {
+        if *b_side != side
+            || hp.current <= 0
+            || bloon.is_inside_chipper
+            || (bloon.camo && !can_hit_camo)
+            || (bloon.layer.is_moab_class() && !moab_capable)
+        {
+            continue;
+        }
+        let d = tower_pos.distance(b_pos.0);
+        if d > range {
+            continue;
+        }
+        let unglued_bonus = if bloon.glue.timer <= 0.0 { 1_000_000.0 } else { 0.0 };
+        let score = unglued_bonus
+            + match priority {
+                TargetPriority::First => bloon.path_progress,
+                TargetPriority::Last => -bloon.path_progress,
+                TargetPriority::Close => -d,
+                TargetPriority::Strong => {
+                    (bloon_cfg(bloon.layer).rbe as f32) * 10000.0 + bloon.path_progress
+                }
+            };
         if best.map_or(true, |(_, _, b_score)| score > b_score) {
             best = Some((entity, b_pos.0, score));
         }
@@ -71,6 +113,10 @@ pub fn tower_attack_system(
                 | TowerType::SpikeFactory
                 | TowerType::MilitaryBase
                 | TowerType::Farm
+                | TowerType::SoulEater
+                | TowerType::Saboteur
+                | TowerType::ScrapCollector
+                | TowerType::MirageGenerator
         ) {
             continue;
         }
@@ -117,6 +163,7 @@ pub fn tower_attack_system(
                             b_entity,
                             *t_side,
                             &bloon,
+                            bp.0,
                             &mut hp,
                             stats.damage,
                             Some(&mut tower),
@@ -129,14 +176,27 @@ pub fn tower_attack_system(
             continue;
         }
 
-        let Some((_, target_pos)) = select_target(
-            t_pos.0,
-            *t_side,
-            tower.priority,
-            stats.range,
-            stats.can_hit_camo,
-            &bloons,
-        ) else {
+        let target = if tower.tower_type == TowerType::GlueGunner {
+            select_glue_target(
+                t_pos.0,
+                *t_side,
+                tower.priority,
+                stats.range,
+                stats.can_hit_camo,
+                stats.glue_moab_capable,
+                &bloons,
+            )
+        } else {
+            select_target(
+                t_pos.0,
+                *t_side,
+                tower.priority,
+                stats.range,
+                stats.can_hit_camo,
+                &bloons,
+            )
+        };
+        let Some((_, target_pos)) = target else {
             continue;
         };
 
@@ -162,6 +222,8 @@ pub fn tower_attack_system(
             let proj_img = match tower.tower_type {
                 TowerType::Cannon => sprites.proj_bomb.clone(),
                 TowerType::NinjaMonkey => sprites.proj_shuriken.clone(),
+                TowerType::GlueGunner => sprites.proj_glue.clone(),
+                TowerType::Necromancer => sprites.proj_dark_orb.clone(),
                 _ => sprites.proj_dart.clone(),
             };
             let color = if is_flash {
@@ -172,6 +234,17 @@ pub fn tower_attack_system(
                 Color::srgb(0.95, 0.90, 0.72)
             } else {
                 Color::WHITE
+            };
+            let glue_payload = if tower.tower_type == TowerType::GlueGunner {
+                Some(GluePayload {
+                    duration: stats.slow_duration,
+                    soak: stats.glue_soak,
+                    corrosive_dmg: stats.glue_corrosive_dmg,
+                    corrosive_interval: stats.glue_corrosive_interval,
+                    moab_capable: stats.glue_moab_capable,
+                })
+            } else {
+                None
             };
 
             commands.spawn((
@@ -190,13 +263,14 @@ pub fn tower_attack_system(
                     stun_duration: if is_flash { 0.85 } else { stats.stun_duration },
                     ceramic_bonus: stats.ceramic_bonus_damage,
                     moab_bonus: stats.moab_bonus_damage,
+                    glue: glue_payload,
                     life: 1.15,
                     hit_ids: Vec::new(),
                 },
                 Sprite {
                     image: proj_img,
                     color,
-                    custom_size: Some(Vec2::splat(if is_flash { 18.0 } else { 14.0 })),
+                    custom_size: Some(Vec2::splat(if is_flash || tower.tower_type == TowerType::Necromancer { 18.0 } else { 14.0 })),
                     ..default()
                 },
                 Transform::from_xyz(t_pos.0.x, t_pos.0.y, 9.0)

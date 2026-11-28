@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use crate::core::state::MatchSettings;
 use crate::core::types::{Health, MatchEntity, Position, Side, TargetPriority, TowerType};
 use crate::data::bloons_cfg::bloon_cfg;
-use crate::data::tower_stats::{apply_village_buff, compute_effective_stats, VillageBuff};
+use crate::data::tower_stats::{apply_village_buff, compute_effective_stats};
 use crate::plugins::bloons::Bloon;
 use crate::plugins::sprites::SpriteAssets;
 
@@ -40,98 +40,6 @@ pub struct CallToArmsFx {
     pub life: f32,
     pub max_life: f32,
     pub target_size: f32,
-}
-
-#[allow(clippy::type_complexity)]
-pub fn update_tower_buffs_system(
-    mut towers: Query<(
-        Entity,
-        &Side,
-        &Tower,
-        &Position,
-        &mut TowerBuff,
-        Option<&CommanderState>,
-    )>,
-) {
-    let mut villages: Vec<(Entity, Side, Vec2, f32, VillageBuff)> = Vec::new();
-    let mut commanders: Vec<(Entity, Side, Vec2, f32, VillageBuff)> = Vec::new();
-
-    for (e, side, t, pos, _, cmd) in towers.iter() {
-        let s = compute_effective_stats(t.tower_type, t.path1, t.path2);
-        if t.tower_type == TowerType::Village {
-            villages.push((
-                e,
-                *side,
-                pos.0,
-                s.range,
-                VillageBuff {
-                    camo: s.aura_camo,
-                    lead: s.aura_lead,
-                    speed_mult: s.aura_speed_mult,
-                    range_mult: s.aura_range_mult,
-                    pierce_bonus: s.aura_pierce_bonus,
-                    damage_bonus: 0,
-                },
-            ));
-        } else if t.tower_type == TowerType::Commander {
-            let cta_mult = if cmd.is_some_and(|c| c.cta_active > 0.0) {
-                1.45
-            } else {
-                1.0
-            };
-            commanders.push((
-                e,
-                *side,
-                pos.0,
-                s.range,
-                VillageBuff {
-                    camo: false,
-                    lead: s.aura_lead,
-                    speed_mult: s.aura_speed_mult * cta_mult,
-                    range_mult: 1.0,
-                    pierce_bonus: 0,
-                    damage_bonus: s.aura_damage_bonus,
-                },
-            ));
-        }
-    }
-
-    for (entity, side, tower, pos, mut buff, _) in &mut towers {
-        let mut v_comb = VillageBuff::default();
-        if tower.tower_type != TowerType::Village {
-            for (ve, vs, vp, vr, vb) in &villages {
-                if *ve == entity || *vs != *side || pos.0.distance(*vp) > *vr {
-                    continue;
-                }
-                v_comb.camo |= vb.camo;
-                v_comb.lead |= vb.lead;
-                v_comb.speed_mult = v_comb.speed_mult.max(vb.speed_mult);
-                v_comb.range_mult = v_comb.range_mult.max(vb.range_mult);
-                v_comb.pierce_bonus = v_comb.pierce_bonus.max(vb.pierce_bonus);
-            }
-        }
-
-        let mut c_speed = 1.0_f32;
-        let mut c_lead = false;
-        let mut c_dmg = 0_i32;
-        for (ce, cs, cp, cr, cb) in &commanders {
-            if *ce == entity || *cs != *side || pos.0.distance(*cp) > *cr {
-                continue;
-            }
-            c_speed = c_speed.max(cb.speed_mult);
-            c_lead |= cb.lead;
-            c_dmg = c_dmg.max(cb.damage_bonus);
-        }
-
-        buff.0 = VillageBuff {
-            camo: v_comb.camo,
-            lead: v_comb.lead || c_lead,
-            speed_mult: v_comb.speed_mult * c_speed,
-            range_mult: v_comb.range_mult,
-            pierce_bonus: v_comb.pierce_bonus,
-            damage_bonus: c_dmg,
-        };
-    }
 }
 
 pub fn commander_ability_and_guards_system(
@@ -293,6 +201,7 @@ pub fn bodyguard_system(
                             stun_duration: 0.0,
                             ceramic_bonus: 0,
                             moab_bonus: 0,
+                            glue: None,
                             life: 0.9,
                             hit_ids: Vec::new(),
                         },

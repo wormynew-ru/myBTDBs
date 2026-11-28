@@ -1,22 +1,20 @@
 use bevy::prelude::*;
 
 use crate::core::events::SendBloonPackEvent;
-use crate::core::state::{BuildSelection, GameState, SelectedTower};
+use crate::core::state::{BuildSelection, GameState, MatchSettings, SelectedTower};
 use crate::core::types::{Side, SidesResource, TowerType};
 use crate::data::bloons_cfg::{SendPackCfg, SEND_PACKS};
 use crate::data::tower_stats::{compute_effective_stats, discounted_send_cost};
-use crate::data::towers_cfg::{tower_cfg, ALL_TOWERS};
+use crate::data::towers_cfg::tower_cfg;
 use crate::plugins::towers::Tower;
 
-const TOWERS_PER_PAGE: usize = 6;
 const PACKS_PER_PAGE: usize = 8;
 
 pub struct BuildBarPlugin;
 
 impl Plugin for BuildBarPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<TowerPage>()
-            .init_resource::<SendPackPage>()
+        app.init_resource::<SendPackPage>()
             .add_systems(OnEnter(GameState::Playing), spawn_build_bar)
             .add_systems(OnExit(GameState::Playing), despawn_build_bar)
             .add_systems(
@@ -28,9 +26,6 @@ impl Plugin for BuildBarPlugin {
 }
 
 #[derive(Resource, Default)]
-struct TowerPage(usize);
-
-#[derive(Resource, Default)]
 struct SendPackPage(usize);
 
 #[derive(Component)]
@@ -39,16 +34,12 @@ struct BuildBarRoot;
 #[derive(Component)]
 enum BuildBarAction {
     SelectTowerSlot(usize),
-    ToggleTowerPage,
     SendPackSlot(usize),
     TogglePackPage,
 }
 
 #[derive(Component)]
 struct TowerSlotLabel(usize);
-
-#[derive(Component)]
-struct TowerPageToggleLabel;
 
 #[derive(Component)]
 struct SendPackSlotLabel(usize);
@@ -58,10 +49,9 @@ struct PageToggleLabel;
 
 fn spawn_build_bar(
     mut commands: Commands,
-    mut tower_page: ResMut<TowerPage>,
+    settings: Res<MatchSettings>,
     mut pack_page: ResMut<SendPackPage>,
 ) {
-    tower_page.0 = 0;
     pack_page.0 = 0;
     commands
         .spawn((
@@ -87,19 +77,21 @@ fn spawn_build_bar(
                 ..default()
             })
             .with_children(|row| {
-                for slot in 0..TOWERS_PER_PAGE {
-                    let cfg = tower_cfg(ALL_TOWERS[slot]);
+                for (slot, &tower_type) in settings.player_loadout.iter().enumerate() {
+                    let cfg = tower_cfg(tower_type);
                     let label = format!("{}\n${}", cfg.short_name, cfg.cost);
                     spawn_slot_btn(
-                        row, BuildBarAction::SelectTowerSlot(slot), TowerSlotLabel(slot),
-                        &label, 58.0, 11.0, Color::srgb(0.30, 0.36, 0.48), cfg.color, Color::WHITE,
+                        row,
+                        BuildBarAction::SelectTowerSlot(slot),
+                        TowerSlotLabel(slot),
+                        &label,
+                        62.0,
+                        11.0,
+                        Color::srgb(0.30, 0.36, 0.48),
+                        cfg.color,
+                        Color::WHITE,
                     );
                 }
-                spawn_slot_btn(
-                    row, BuildBarAction::ToggleTowerPage, TowerPageToggleLabel,
-                    "1/2", 48.0, 13.0, Color::srgb(0.38, 0.72, 0.98),
-                    Color::srgb(0.18, 0.24, 0.36), Color::srgb(0.38, 0.72, 0.98),
-                );
             });
 
             bar.spawn(Node {
@@ -112,15 +104,27 @@ fn spawn_build_bar(
                     let pack = &SEND_PACKS[slot];
                     let label = format_pack_label(pack, 0.0);
                     spawn_slot_btn(
-                        row, BuildBarAction::SendPackSlot(slot), SendPackSlotLabel(slot),
-                        &label, 60.0, 10.0, pack.badge_color,
-                        Color::srgb(0.11, 0.15, 0.24), Color::WHITE,
+                        row,
+                        BuildBarAction::SendPackSlot(slot),
+                        SendPackSlotLabel(slot),
+                        &label,
+                        58.0,
+                        10.0,
+                        pack.badge_color,
+                        Color::srgb(0.11, 0.15, 0.24),
+                        Color::WHITE,
                     );
                 }
                 spawn_slot_btn(
-                    row, BuildBarAction::TogglePackPage, PageToggleLabel,
-                    "1/2", 48.0, 13.0, Color::srgb(0.98, 0.80, 0.24),
-                    Color::srgb(0.18, 0.24, 0.36), Color::srgb(0.98, 0.80, 0.24),
+                    row,
+                    BuildBarAction::TogglePackPage,
+                    PageToggleLabel,
+                    "1/2",
+                    48.0,
+                    13.0,
+                    Color::srgb(0.98, 0.80, 0.24),
+                    Color::srgb(0.18, 0.24, 0.36),
+                    Color::srgb(0.98, 0.80, 0.24),
                 );
             });
         });
@@ -157,7 +161,10 @@ fn spawn_slot_btn<M: Component>(
         btn.spawn((
             marker,
             Text::new(label),
-            TextFont { font_size, ..default() },
+            TextFont {
+                font_size,
+                ..default()
+            },
             TextColor(text_color),
         ));
     });
@@ -180,14 +187,13 @@ fn despawn_build_bar(mut commands: Commands, query: Query<Entity, With<BuildBarR
 }
 
 fn handle_build_bar_buttons(
-    mut tower_page: ResMut<TowerPage>,
+    settings: Res<MatchSettings>,
     mut pack_page: ResMut<SendPackPage>,
     mut build_sel: ResMut<BuildSelection>,
     mut selected_tower: ResMut<SelectedTower>,
     mut send_writer: EventWriter<SendBloonPackEvent>,
     interactions: Query<(&Interaction, &BuildBarAction), Changed<Interaction>>,
 ) {
-    let total_tower_pages = ALL_TOWERS.len().div_ceil(TOWERS_PER_PAGE).max(1);
     let total_pack_pages = SEND_PACKS.len().div_ceil(PACKS_PER_PAGE).max(1);
 
     for (interaction, action) in &interactions {
@@ -196,8 +202,7 @@ fn handle_build_bar_buttons(
         }
         match *action {
             BuildBarAction::SelectTowerSlot(slot) => {
-                let idx = tower_page.0 * TOWERS_PER_PAGE + slot;
-                if let Some(&t) = ALL_TOWERS.get(idx) {
+                if let Some(&t) = settings.player_loadout.get(slot) {
                     if build_sel.0 == Some(t) {
                         build_sel.0 = None;
                     } else {
@@ -206,13 +211,13 @@ fn handle_build_bar_buttons(
                     }
                 }
             }
-            BuildBarAction::ToggleTowerPage => {
-                tower_page.0 = (tower_page.0 + 1) % total_tower_pages;
-            }
             BuildBarAction::SendPackSlot(slot) => {
                 let pack_index = pack_page.0 * PACKS_PER_PAGE + slot;
                 if pack_index < SEND_PACKS.len() {
-                    send_writer.send(SendBloonPackEvent { sender: Side::Player, pack_index });
+                    send_writer.send(SendBloonPackEvent {
+                        sender: Side::Player,
+                        pack_index,
+                    });
                 }
             }
             BuildBarAction::TogglePackPage => {
@@ -225,30 +230,25 @@ fn handle_build_bar_buttons(
 #[allow(clippy::type_complexity)]
 #[allow(clippy::too_many_arguments)]
 fn update_build_bar_styles(
-    tower_page: Res<TowerPage>,
+    settings: Res<MatchSettings>,
     pack_page: Res<SendPackPage>,
     build_sel: Res<BuildSelection>,
     sides: Res<SidesResource>,
     towers: Query<(&Side, &Tower)>,
-    mut buttons: Query<(&BuildBarAction, &mut BorderColor, &mut BackgroundColor, &mut Visibility)>,
+    mut buttons: Query<(&BuildBarAction, &mut BorderColor, &mut BackgroundColor)>,
     mut tower_texts: Query<
         (&TowerSlotLabel, &mut Text),
-        (Without<TowerPageToggleLabel>, Without<SendPackSlotLabel>, Without<PageToggleLabel>),
-    >,
-    mut tower_page_texts: Query<
-        &mut Text,
-        (With<TowerPageToggleLabel>, Without<TowerSlotLabel>, Without<SendPackSlotLabel>, Without<PageToggleLabel>),
+        (Without<SendPackSlotLabel>, Without<PageToggleLabel>),
     >,
     mut slot_texts: Query<
         (&SendPackSlotLabel, &mut Text),
-        (Without<PageToggleLabel>, Without<TowerSlotLabel>, Without<TowerPageToggleLabel>),
+        (Without<PageToggleLabel>, Without<TowerSlotLabel>),
     >,
     mut page_texts: Query<
         &mut Text,
-        (With<PageToggleLabel>, Without<SendPackSlotLabel>, Without<TowerSlotLabel>, Without<TowerPageToggleLabel>),
+        (With<PageToggleLabel>, Without<SendPackSlotLabel>, Without<TowerSlotLabel>),
     >,
 ) {
-    let total_tower_pages = ALL_TOWERS.len().div_ceil(TOWERS_PER_PAGE).max(1);
     let total_pack_pages = SEND_PACKS.len().div_ceil(PACKS_PER_PAGE).max(1);
     let discount: f32 = towers
         .iter()
@@ -257,12 +257,10 @@ fn update_build_bar_styles(
         .sum::<f32>()
         .min(0.20);
 
-    for (action, mut border, mut bg, mut vis) in &mut buttons {
+    for (action, mut border, mut bg) in &mut buttons {
         match *action {
             BuildBarAction::SelectTowerSlot(slot) => {
-                let idx = tower_page.0 * TOWERS_PER_PAGE + slot;
-                if let Some(&t) = ALL_TOWERS.get(idx) {
-                    *vis = Visibility::Inherited;
+                if let Some(&t) = settings.player_loadout.get(slot) {
                     let cfg = tower_cfg(t);
                     let active = build_sel.0 == Some(t);
                     let affordable = sides.player.cash >= cfg.cost;
@@ -273,9 +271,11 @@ fn update_build_bar_styles(
                     } else {
                         Color::srgb(0.22, 0.22, 0.26)
                     };
-                    bg.0 = if affordable || active { cfg.color } else { Color::srgb(0.14, 0.16, 0.20) };
-                } else {
-                    *vis = Visibility::Hidden;
+                    bg.0 = if affordable || active {
+                        cfg.color
+                    } else {
+                        Color::srgb(0.14, 0.16, 0.20)
+                    };
                 }
             }
             BuildBarAction::SendPackSlot(slot) => {
@@ -291,19 +291,15 @@ fn update_build_bar_styles(
                     };
                 }
             }
-            BuildBarAction::ToggleTowerPage | BuildBarAction::TogglePackPage => {}
+            BuildBarAction::TogglePackPage => {}
         }
     }
 
     for (slot, mut text) in &mut tower_texts {
-        let idx = tower_page.0 * TOWERS_PER_PAGE + slot.0;
-        if let Some(&t) = ALL_TOWERS.get(idx) {
+        if let Some(&t) = settings.player_loadout.get(slot.0) {
             let cfg = tower_cfg(t);
             **text = format!("{}\n${}", cfg.short_name, cfg.cost);
         }
-    }
-    if let Ok(mut text) = tower_page_texts.get_single_mut() {
-        **text = format!("{}/{}", tower_page.0 + 1, total_tower_pages);
     }
     for (slot, mut text) in &mut slot_texts {
         let idx = pack_page.0 * PACKS_PER_PAGE + slot.0;

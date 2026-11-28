@@ -3,9 +3,9 @@ use bevy::prelude::*;
 use crate::core::events::{BloonLeakedEvent, BloonPoppedEvent, SendBloonPackEvent};
 use crate::core::state::{GameState, MatchResult, MatchSettings};
 use crate::core::types::{Side, SideEconomy, SidesResource, TowerType};
-use crate::data::bloons_cfg::{SEND_PACKS, WAVE_DURATION_SECS};
+use crate::data::bloons_cfg::SEND_PACKS;
 use crate::data::tower_stats::{compute_effective_stats, discounted_send_cost};
-use crate::data::towers_cfg::{ECO_INTERVAL_SECS, STARTING_CASH, STARTING_ECO, STARTING_LIVES};
+use crate::data::towers_cfg::STARTING_LIVES;
 use crate::plugins::bloons::{QueuedSendPack, SendPackQueue};
 use crate::plugins::towers::Tower;
 
@@ -30,22 +30,23 @@ impl Plugin for EconomyPlugin {
 fn reset_economy(mut sides: ResMut<SidesResource>, mut settings: ResMut<MatchSettings>) {
     settings.paused = false;
     settings.speed_mult = 1.0;
+    let mode = settings.game_mode;
     *sides = SidesResource {
         player: SideEconomy {
             lives: STARTING_LIVES,
-            cash: STARTING_CASH,
-            eco: STARTING_ECO,
+            cash: mode.starting_cash(),
+            eco: mode.starting_eco(),
             pops: 0,
         },
         bot: SideEconomy {
             lives: STARTING_LIVES,
-            cash: STARTING_CASH,
-            eco: STARTING_ECO,
+            cash: mode.starting_cash(),
+            eco: mode.starting_eco(),
             pops: 0,
         },
-        eco_timer: ECO_INTERVAL_SECS,
+        eco_timer: mode.eco_interval(),
         wave: 1,
-        wave_timer: WAVE_DURATION_SECS,
+        wave_timer: mode.wave_duration(),
         match_time: 0.0,
     };
 }
@@ -62,7 +63,7 @@ fn eco_payout_system(
     let dt = time.delta_secs() * settings.speed_mult;
     sides.eco_timer -= dt;
     if sides.eco_timer <= 0.0 {
-        sides.eco_timer += ECO_INTERVAL_SECS;
+        sides.eco_timer += settings.game_mode.eco_interval();
         let mut p_bonus = 0;
         let mut b_bonus = 0;
         for (side, tower) in &towers {

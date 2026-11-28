@@ -75,36 +75,51 @@ pub fn path_units_system(
 
         let mut target: Option<(Vec2, f32)> = None;
         if unit.gun_range > 0.0 {
+            let prefer_strong = unit.kind == UnitKind::MilitaryVehicle(4);
             for (_, bs, b, hp, bp) in bloons.iter() {
                 if *bs != *u_side || hp.current <= 0 || b.is_inside_chipper || (b.camo && !unit.can_hit_camo) {
                     continue;
                 }
                 let d = u_pos.0.distance(bp.0);
-                if d <= unit.gun_range && target.map_or(true, |(_, bd)| d < bd) {
-                    target = Some((bp.0, d));
+                if d > unit.gun_range {
+                    continue;
+                }
+                let score = if prefer_strong {
+                    let mirage_bias = if b.is_mirage { 5000.0 } else { 0.0 };
+                    (bloon_cfg(b.layer).rbe as f32) * 10000.0 + mirage_bias - d
+                } else {
+                    -d
+                };
+                if target.map_or(true, |(_, bs_score)| score > bs_score) {
+                    target = Some((bp.0, score));
                 }
             }
         }
 
+        let move_speed = if target.is_some() {
+            unit.speed * 0.35
+        } else {
+            unit.speed
+        };
+        unit.path_progress -= move_speed * dt;
+        if unit.path_progress <= 0.0 {
+            commands.entity(u_e).despawn_recursive();
+            continue;
+        }
+        let wps = if *u_side == Side::Player { &player_wps } else { &bot_wps };
+        let (next_pos, _) = sample_path(wps, unit.path_progress);
         if let Some((tp, _)) = target {
             let aim = (tp - u_pos.0).normalize_or(Vec2::X);
             u_tf.rotation = Quat::from_rotation_z(aim.y.atan2(aim.x));
         } else {
-            unit.path_progress -= unit.speed * dt;
-            if unit.path_progress <= 0.0 {
-                commands.entity(u_e).despawn_recursive();
-                continue;
-            }
-            let wps = if *u_side == Side::Player { &player_wps } else { &bot_wps };
-            let (next_pos, _) = sample_path(wps, unit.path_progress);
             let move_dir = next_pos - u_pos.0;
             if move_dir.length_squared() > 0.01 {
                 u_tf.rotation = Quat::from_rotation_z(move_dir.y.atan2(move_dir.x));
             }
-            u_pos.0 = next_pos;
-            u_tf.translation.x = next_pos.x;
-            u_tf.translation.y = next_pos.y;
         }
+        u_pos.0 = next_pos;
+        u_tf.translation.x = next_pos.x;
+        u_tf.translation.y = next_pos.y;
 
         if unit.gun_cd > 0.0 {
             unit.fire_cooldown -= dt;
@@ -157,7 +172,7 @@ pub fn path_units_system(
             let deal = unit.hp.max(1);
             unit.hp -= bloon_total;
             apply_multi_layer_damage(
-                &mut commands, b_e, *u_side, b, &mut hp, deal,
+                &mut commands, b_e, *u_side, b, bp.0, &mut hp, deal,
                 src_tower.as_deref_mut(), &mut spawn_writer, &mut pop_writer,
             );
             if unit.hp <= 0 {
@@ -187,7 +202,7 @@ pub fn path_units_system(
                     }
                     if circles_overlap(u_pos.0, unit.explode_radius, bp.0, bloon_cfg(b.layer).size * 0.5) {
                         apply_multi_layer_damage(
-                            &mut commands, b_e, *u_side, b, &mut hp, unit.explode_damage,
+                            &mut commands, b_e, *u_side, b, bp.0, &mut hp, unit.explode_damage,
                             src_tower.as_deref_mut(), &mut spawn_writer, &mut pop_writer,
                         );
                     }
@@ -222,6 +237,7 @@ fn spawn_unit_proj(
             stun_duration,
             ceramic_bonus,
             moab_bonus,
+            glue: None,
             life: 0.85,
             hit_ids: Vec::new(),
         },

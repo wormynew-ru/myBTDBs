@@ -64,6 +64,22 @@ pub enum TowerType {
     MilitaryBase,
     CrookBoss,
     Farm,
+    GlueGunner,
+    SoulEater,
+    Necromancer,
+    Saboteur,
+    ScrapCollector,
+    MirageGenerator,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct GlueStatus {
+    pub timer: f32,
+    pub soak: bool,
+    pub corrosive_dmg: i32,
+    pub corrosive_interval: f32,
+    pub tick: f32,
+    pub source_tower: Option<Entity>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

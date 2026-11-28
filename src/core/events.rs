@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use super::types::{BloonLayer, Side, TargetPriority, TowerType};
+use super::types::{BloonLayer, GlueStatus, Side, TargetPriority, TowerType};
 
 #[derive(Event, Debug, Clone, Copy)]
 pub struct SpawnBloonEvent {
@@ -11,6 +11,7 @@ pub struct SpawnBloonEvent {
     pub path_progress: f32,
     pub from_send: bool,
     pub permafrost: bool,
+    pub glue: GlueStatus,
     pub regrab_immune_tower: Option<Entity>,
     pub regrab_cooldown: f32,
 }
@@ -64,4 +65,9 @@ pub struct BloonPoppedEvent {
     pub side: Side,
     pub cash_gain: i32,
     pub pops: u32,
+    pub pos: Vec2,
+    pub killed: bool,
+    pub from_send: bool,
+    pub is_moab: bool,
+    pub mirage_flash: Option<(f32, f32)>,
 }

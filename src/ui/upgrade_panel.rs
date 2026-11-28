@@ -1,12 +1,16 @@
+#[path = "upgrade_panel_sync.rs"]
+mod upgrade_panel_sync;
+
 use bevy::prelude::*;
 
 use crate::core::events::{
     ActivateAbilityEvent, ChangePriorityEvent, SellTowerEvent, UpgradeTowerEvent,
 };
 use crate::core::state::{GameState, SelectedTower};
-use crate::core::types::{Side, TowerType};
-use crate::data::towers_cfg::{tower_cfg, SELL_REFUND_RATIO};
-use crate::plugins::towers::{ChipperState, Tower, TowerBuff};
+use crate::core::types::Side;
+use crate::plugins::towers::Tower;
+
+use upgrade_panel_sync::sync_upgrade_panel;
 
 pub struct UpgradePanelPlugin;
 
@@ -23,28 +27,28 @@ impl Plugin for UpgradePanelPlugin {
 }
 
 #[derive(Component)]
-struct UpgradePanelRoot;
+pub(super) struct UpgradePanelRoot;
 
 #[derive(Component)]
-struct PanelTitleText;
+pub(super) struct PanelTitleText;
 
 #[derive(Component)]
-struct Path1BtnText;
+pub(super) struct Path1BtnText;
 
 #[derive(Component)]
-struct Path2BtnText;
+pub(super) struct Path2BtnText;
 
 #[derive(Component)]
-struct PriorityBtnText;
+pub(super) struct PriorityBtnText;
 
 #[derive(Component)]
-struct AbilityBtn;
+pub(super) struct AbilityBtn;
 
 #[derive(Component)]
-struct AbilityBtnText;
+pub(super) struct AbilityBtnText;
 
 #[derive(Component)]
-struct SellBtnText;
+pub(super) struct SellBtnText;
 
 #[derive(Component)]
 enum UpgradePanelAction {
@@ -210,87 +214,6 @@ impl Default for SellBtnText { fn default() -> Self { Self } }
 fn despawn_upgrade_panel(mut commands: Commands, query: Query<Entity, With<UpgradePanelRoot>>) {
     for entity in &query {
         commands.entity(entity).despawn_recursive();
-    }
-}
-
-#[allow(clippy::type_complexity)]
-#[allow(clippy::too_many_arguments)]
-fn sync_upgrade_panel(
-    selected: Res<SelectedTower>,
-    towers: Query<(&Tower, &TowerBuff, Option<&ChipperState>)>,
-    mut panel_q: Query<&mut Visibility, With<UpgradePanelRoot>>,
-    mut ability_vis_q: Query<&mut Visibility, (With<AbilityBtn>, Without<UpgradePanelRoot>)>,
-    mut title_q: Query<&mut Text, (With<PanelTitleText>, Without<Path1BtnText>, Without<Path2BtnText>, Without<PriorityBtnText>, Without<SellBtnText>, Without<AbilityBtnText>)>,
-    mut p1_q: Query<&mut Text, (With<Path1BtnText>, Without<PanelTitleText>, Without<Path2BtnText>, Without<PriorityBtnText>, Without<SellBtnText>, Without<AbilityBtnText>)>,
-    mut p2_q: Query<&mut Text, (With<Path2BtnText>, Without<PanelTitleText>, Without<Path1BtnText>, Without<PriorityBtnText>, Without<SellBtnText>, Without<AbilityBtnText>)>,
-    mut prio_q: Query<&mut Text, (With<PriorityBtnText>, Without<PanelTitleText>, Without<Path1BtnText>, Without<Path2BtnText>, Without<SellBtnText>, Without<AbilityBtnText>)>,
-    mut sell_q: Query<&mut Text, (With<SellBtnText>, Without<PanelTitleText>, Without<Path1BtnText>, Without<Path2BtnText>, Without<PriorityBtnText>, Without<AbilityBtnText>)>,
-    mut ab_text_q: Query<&mut Text, (With<AbilityBtnText>, Without<PanelTitleText>, Without<Path1BtnText>, Without<Path2BtnText>, Without<PriorityBtnText>, Without<SellBtnText>)>,
-) {
-    let Ok(mut vis) = panel_q.get_single_mut() else {
-        return;
-    };
-    let Some(entity) = selected.0 else {
-        *vis = Visibility::Hidden;
-        return;
-    };
-    let Ok((tower, buff, chipper)) = towers.get(entity) else {
-        *vis = Visibility::Hidden;
-        return;
-    };
-
-    *vis = Visibility::Visible;
-    let cfg = tower_cfg(tower.tower_type);
-
-    if let Ok(mut t) = title_q.get_single_mut() {
-        if tower.tower_type == TowerType::Farm {
-            **t = format!("{} | Earned: ${}", cfg.name, tower.pops);
-        } else {
-            let camo_tag = if buff.0.camo { " [CAMO]" } else { "" };
-            let lead_tag = if buff.0.lead { " [LEAD]" } else { "" };
-            **t = format!("{} | Pops: {}{}{}", cfg.name, tower.pops, camo_tag, lead_tag);
-        }
-    }
-    if let Ok(mut t) = p1_q.get_single_mut() {
-        let max_t = cfg.path1.len();
-        **t = if (tower.path1 as usize) < max_t {
-            let u = cfg.path1[tower.path1 as usize];
-            format!("P1 ({}/{}): {} ${}", tower.path1, max_t, u.name, u.cost)
-        } else {
-            format!("P1 ({}/{}): MAXED", max_t, max_t)
-        };
-    }
-    if let Ok(mut t) = p2_q.get_single_mut() {
-        let max_t = cfg.path2.len();
-        **t = if (tower.path2 as usize) < max_t {
-            let u = cfg.path2[tower.path2 as usize];
-            format!("P2 ({}/{}): {} ${}", tower.path2, max_t, u.name, u.cost)
-        } else {
-            format!("P2 ({}/{}): MAXED", max_t, max_t)
-        };
-    }
-    if let Ok(mut t) = prio_q.get_single_mut() {
-        **t = format!("Target: {}", tower.priority.label());
-    }
-    if let Ok(mut ab_vis) = ability_vis_q.get_single_mut() {
-        if tower.tower_type == TowerType::Bloonchipper && tower.path2 >= 4 {
-            *ab_vis = Visibility::Inherited;
-            if let (Ok(mut ab_t), Some(c)) = (ab_text_q.get_single_mut(), chipper) {
-                **ab_t = if c.supa_vac_active > 0.0 {
-                    format!("Supa-Vac ACTIVE ({:.1}s)", c.supa_vac_active)
-                } else if c.supa_vac_cooldown > 0.0 {
-                    format!("Supa-Vac CD: {:.1}s", c.supa_vac_cooldown)
-                } else {
-                    "ACTIVATE SUPA-VAC".to_string()
-                };
-            }
-        } else {
-            *ab_vis = Visibility::Hidden;
-        }
-    }
-    if let Ok(mut t) = sell_q.get_single_mut() {
-        let refund = ((tower.total_invested as f32) * SELL_REFUND_RATIO).round() as i32;
-        **t = format!("Sell (+${})", refund);
     }
 }
 

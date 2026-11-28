@@ -54,10 +54,64 @@ impl MapId {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum GameMode {
+    #[default]
+    Standard,
+    Turbo,
+}
+
+impl GameMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            GameMode::Standard => "Standard (5)",
+            GameMode::Turbo => "Turbo (6)",
+        }
+    }
+
+    pub fn loadout_size(self) -> usize {
+        match self {
+            GameMode::Standard => 5,
+            GameMode::Turbo => 6,
+        }
+    }
+
+    pub fn starting_cash(self) -> i32 {
+        match self {
+            GameMode::Standard => 650,
+            GameMode::Turbo => 1500,
+        }
+    }
+
+    pub fn starting_eco(self) -> i32 {
+        match self {
+            GameMode::Standard => 250,
+            GameMode::Turbo => 400,
+        }
+    }
+
+    pub fn wave_duration(self) -> f32 {
+        match self {
+            GameMode::Standard => 16.0,
+            GameMode::Turbo => 10.0,
+        }
+    }
+
+    pub fn eco_interval(self) -> f32 {
+        match self {
+            GameMode::Standard => 6.0,
+            GameMode::Turbo => 4.0,
+        }
+    }
+}
+
 #[derive(Resource, Debug, Clone)]
 pub struct MatchSettings {
     pub difficulty: Difficulty,
     pub map_id: MapId,
+    pub game_mode: GameMode,
+    pub player_loadout: Vec<TowerType>,
+    pub bot_loadout: Vec<TowerType>,
     pub speed_mult: f32,
     pub paused: bool,
 }
@@ -67,6 +121,15 @@ impl Default for MatchSettings {
         Self {
             difficulty: Difficulty::Medium,
             map_id: MapId::Meadow,
+            game_mode: GameMode::Standard,
+            player_loadout: vec![
+                TowerType::DartMonkey,
+                TowerType::Cannon,
+                TowerType::NinjaMonkey,
+                TowerType::SpikeFactory,
+                TowerType::Farm,
+            ],
+            bot_loadout: Vec::new(),
             speed_mult: 1.0,
             paused: false,
         }

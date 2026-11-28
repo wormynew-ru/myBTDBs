@@ -2,12 +2,13 @@ use bevy::prelude::*;
 
 use crate::core::events::{BloonPoppedEvent, SpawnBloonEvent};
 use crate::core::state::MatchSettings;
-use crate::core::types::{BloonLayer, Health, Side, TowerType};
+use crate::core::types::{BloonLayer, GlueStatus, Health, Side, TowerType};
 use crate::data::bloons_cfg::bloon_cfg;
 use crate::data::maps_cfg::{DIVIDER_HALF, HALF_W};
 use crate::plugins::bloons::Bloon;
 use crate::utils::circles_overlap;
 
+use super::glue::apply_glue_to_bloon;
 use super::{Projectile, Tower};
 
 #[allow(clippy::too_many_arguments)]
@@ -67,6 +68,7 @@ pub fn projectile_update_system(
 
         let mut src_tower = towers.get_mut(proj.source_tower).ok();
         if proj.splash_radius > 0.0 {
+            let mut left = proj.pierce_left;
             for (b_entity, b_side, mut bloon, mut hp, b_pos) in &mut bloons {
                 if *b_side != *p_side
                     || hp.current <= 0
@@ -77,6 +79,16 @@ pub fn projectile_update_system(
                 }
                 let r = bloon_cfg(bloon.layer).size * 0.5;
                 if circles_overlap(p_pos.0, proj.splash_radius, b_pos.0, r) {
+                    if let Some(g) = proj.glue {
+                        if !bloon.layer.is_moab_class() || g.moab_capable {
+                            apply_glue_to_bloon(&mut bloon, proj.source_tower, g);
+                            left = left.saturating_sub(1);
+                            if left == 0 {
+                                break;
+                            }
+                        }
+                        continue;
+                    }
                     if proj.stun_duration > 0.0 {
                         bloon.freeze_timer = bloon.freeze_timer.max(proj.stun_duration);
                         bloon.slow_factor = bloon.slow_factor.min(0.15);
@@ -88,6 +100,7 @@ pub fn projectile_update_system(
                             b_entity,
                             *p_side,
                             &bloon,
+                            b_pos.0,
                             &mut hp,
                             dmg,
                             src_tower.as_deref_mut(),
@@ -98,25 +111,32 @@ pub fn projectile_update_system(
                 }
             }
             commands.entity(p_entity).despawn_recursive();
-        } else if let Ok((_, _, mut bloon, mut hp, _)) = bloons.get_mut(first_hit) {
+        } else if let Ok((_, _, mut bloon, mut hp, b_pos)) = bloons.get_mut(first_hit) {
             proj.hit_ids.push(first_hit);
             proj.pierce_left = proj.pierce_left.saturating_sub(1);
-            if proj.knockback_chance > 0.0 && (proj.life * 100.0).fract() < proj.knockback_chance {
-                bloon.path_progress = (bloon.path_progress - 26.0).max(0.0);
-            }
-            if (!bloon.lead || proj.can_pop_lead) && hp.current > 0 {
-                let dmg = projectile_damage(&proj, bloon.layer);
-                apply_damage(
-                    &mut commands,
-                    first_hit,
-                    *p_side,
-                    &bloon,
-                    &mut hp,
-                    dmg,
-                    src_tower.as_deref_mut(),
-                    &mut spawn_writer,
-                    &mut pop_writer,
-                );
+            if let Some(g) = proj.glue {
+                if !bloon.layer.is_moab_class() || g.moab_capable {
+                    apply_glue_to_bloon(&mut bloon, proj.source_tower, g);
+                }
+            } else {
+                if proj.knockback_chance > 0.0 && (proj.life * 100.0).fract() < proj.knockback_chance {
+                    bloon.path_progress = (bloon.path_progress - 26.0).max(0.0);
+                }
+                if (!bloon.lead || proj.can_pop_lead) && hp.current > 0 {
+                    let dmg = projectile_damage(&proj, bloon.layer);
+                    apply_damage(
+                        &mut commands,
+                        first_hit,
+                        *p_side,
+                        &bloon,
+                        b_pos.0,
+                        &mut hp,
+                        dmg,
+                        src_tower.as_deref_mut(),
+                        &mut spawn_writer,
+                        &mut pop_writer,
+                    );
+                }
             }
             if proj.pierce_left == 0 {
                 commands.entity(p_entity).despawn_recursive();
@@ -142,6 +162,7 @@ pub fn apply_damage(
     bloon_entity: Entity,
     side: Side,
     bloon: &Bloon,
+    pos: Vec2,
     hp: &mut Health,
     damage: i32,
     tower: Option<&mut Tower>,
@@ -164,17 +185,45 @@ pub fn apply_damage(
         pop_writer.send(BloonPoppedEvent {
             side,
             cash_gain: bonus_cash,
-            pops: dealt as u32,
+            pops: if bloon.is_mirage { 0 } else { dealt as u32 },
+            pos,
+            killed: false,
+            from_send: bloon.from_send,
+            is_moab: bloon.layer.is_moab_class(),
+            mirage_flash: None,
         });
         return;
     }
 
+    let base_cash = if bloon.is_ghost || bloon.is_mirage { 0 } else { 1 };
+    let mirage_flash = if bloon.is_mirage && bloon.mirage_flash_duration > 0.0 {
+        Some((bloon.mirage_flash_radius, bloon.mirage_flash_duration))
+    } else {
+        None
+    };
     pop_writer.send(BloonPoppedEvent {
         side,
-        cash_gain: 1 + bonus_cash,
-        pops: 1,
+        cash_gain: base_cash + bonus_cash,
+        pops: if bloon.is_mirage { 0 } else { 1 },
+        pos,
+        killed: true,
+        from_send: bloon.from_send,
+        is_moab: bloon.layer.is_moab_class(),
+        mirage_flash,
     });
     commands.entity(bloon_entity).despawn_recursive();
+
+    if bloon.is_ghost || bloon.is_mirage {
+        return;
+    }
+    let child_glue = if bloon.glue.soak && bloon.glue.timer > 0.0 {
+        GlueStatus {
+            tick: bloon.glue.corrosive_interval,
+            ..bloon.glue
+        }
+    } else {
+        GlueStatus::default()
+    };
 
     if let Some((child_layer, count)) = bloon_cfg(bloon.layer).child {
         for c in 0..count {
@@ -186,6 +235,7 @@ pub fn apply_damage(
                 path_progress: (bloon.path_progress - (c as f32) * 12.0).max(0.0),
                 from_send: bloon.from_send,
                 permafrost: bloon.permafrost,
+                glue: child_glue,
                 regrab_immune_tower: bloon.regrab_immune_tower,
                 regrab_cooldown: bloon.regrab_cooldown,
             });

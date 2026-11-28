@@ -172,7 +172,7 @@ pub fn spike_factory_produce_system(
         if stats.has_spike_storm {
             state.storm_timer -= dt;
             if state.storm_timer <= 0.0 {
-                state.storm_timer += 18.0;
+                state.storm_timer += 28.0;
                 let mut d = 18.0;
                 let end = (total_len - 18.0).max(18.0);
                 while d <= end {
@@ -258,6 +258,7 @@ pub fn spike_piles_system(
                     b_entity,
                     *p_side,
                     &bloon,
+                    b_pos.0,
                     &mut hp,
                     dmg,
                     src_tower.as_deref_mut(),
@@ -299,6 +300,7 @@ pub fn spike_piles_system(
                             b_entity,
                             *p_side,
                             &bloon,
+                            b_pos.0,
                             &mut hp,
                             8,
                             src_tower.as_deref_mut(),

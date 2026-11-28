@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use crate::core::events::{BloonPoppedEvent, SpawnBloonEvent};
 use crate::core::state::MatchSettings;
-use crate::core::types::{BloonLayer, Health, MatchEntity, Position, Side, TargetPriority};
+use crate::core::types::{BloonLayer, Health, Position, Side, TargetPriority};
 use crate::data::bloons_cfg::bloon_cfg;
 use crate::data::maps_cfg::waypoints_for_side;
 use crate::data::tower_stats::{apply_village_buff, compute_effective_stats};
@@ -10,6 +10,7 @@ use crate::plugins::bloons::Bloon;
 use crate::plugins::sprites::SpriteAssets;
 use crate::utils::sample_path;
 
+use super::chipper_fx::{emit_shred_pop, spawn_shred_particle, strip_normal_layer};
 use super::{Tower, TowerBuff};
 
 #[derive(Debug, Clone)]
@@ -53,25 +54,6 @@ impl ChipperState {
 pub struct ShredParticle {
     pub velocity: Vec2,
     pub life: f32,
-}
-
-fn strip_normal_layer(layer: BloonLayer, layers: u8) -> Option<(BloonLayer, u8)> {
-    let mut cur: Vec<(BloonLayer, u8)> = vec![(layer, 1)];
-    for _ in 0..layers {
-        let mut next = Vec::new();
-        for (l, cnt) in cur {
-            if let Some((child, mult)) = bloon_cfg(l).child {
-                next.push((child, cnt * mult));
-            }
-        }
-        cur = next;
-        if cur.is_empty() {
-            return None;
-        }
-    }
-    let first_layer = cur[0].0;
-    let total_count: u8 = cur.iter().map(|(_, c)| *c).sum();
-    Some((first_layer, total_count))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -138,7 +120,10 @@ pub fn chipper_fsm_system(
                     TargetPriority::First => b.path_progress,
                     TargetPriority::Last => -b.path_progress,
                     TargetPriority::Close => -d,
-                    TargetPriority::Strong => (bloon_cfg(b.layer).rbe as f32) * 10000.0 + b.path_progress,
+                    TargetPriority::Strong => {
+                        let mirage_bias = if b.is_mirage { 5000.0 } else { 0.0 };
+                        (bloon_cfg(b.layer).rbe as f32) * 10000.0 + mirage_bias + b.path_progress
+                    }
                 };
                 if best.map_or(true, |(_, _, _, _, bs)| score > bs) {
                     best = Some((b_entity, b_pos.0, weight, is_moab, score));
@@ -209,25 +194,30 @@ pub fn chipper_fsm_system(
                     let dealt = hp.current.min(dmg).max(0);
                     hp.current -= dmg;
                     tower.pops += dealt as u32;
-                    pop_writer.send(BloonPoppedEvent { side: *t_side, cash_gain: 0, pops: dealt as u32 });
+                    pop_writer.send(BloonPoppedEvent {
+                        side: *t_side,
+                        cash_gain: 0,
+                        pops: if b.is_mirage { 0 } else { dealt as u32 },
+                        pos: b_pos.0,
+                        killed: false,
+                        from_send: b.from_send,
+                        is_moab: b.layer.is_moab_class(),
+                        mirage_flash: None,
+                    });
                     if hp.current <= 0 {
-                        pop_writer.send(BloonPoppedEvent { side: *t_side, cash_gain: 1, pops: 1 });
-                        if let Some((child_layer, count)) = bloon_cfg(b.layer).child {
-                            for c in 0..count {
-                                spawn_writer.send(SpawnBloonEvent {
-                                    side: *t_side,
-                                    layer: child_layer,
-                                    camo: b.camo,
-                                    lead: false,
-                                    path_progress: (b.path_progress - 24.0 - (c as f32) * 14.0).max(0.0),
-                                    from_send: b.from_send,
-                                    permafrost: b.permafrost,
-                                    regrab_immune_tower: Some(t_entity),
-                                    regrab_cooldown: 0.3,
-                                });
-                            }
-                        }
-                        commands.entity(b_e).despawn_recursive();
+                        emit_shred_pop(
+                            &mut commands,
+                            b_e,
+                            *t_side,
+                            &b,
+                            b_pos.0,
+                            t_entity,
+                            bloon_cfg(b.layer).child,
+                            b.path_progress - 24.0,
+                            14.0,
+                            &mut spawn_writer,
+                            &mut pop_writer,
+                        );
                         continue;
                     }
                 }
@@ -260,7 +250,16 @@ pub fn chipper_fsm_system(
                 hp.current -= dmg;
                 tower.pops += dealt as u32;
                 if hp.current > 0 {
-                    pop_writer.send(BloonPoppedEvent { side: *t_side, cash_gain: 0, pops: dealt as u32 });
+                    pop_writer.send(BloonPoppedEvent {
+                        side: *t_side,
+                        cash_gain: 0,
+                        pops: if b.is_mirage { 0 } else { dealt as u32 },
+                        pos: b_pos.0,
+                        killed: false,
+                        from_send: b.from_send,
+                        is_moab: b.layer.is_moab_class(),
+                        mirage_flash: None,
+                    });
                     b.is_inside_chipper = false;
                     b.path_progress = eject_progress;
                     b.regrab_immune_tower = Some(t_entity);
@@ -276,23 +275,19 @@ pub fn chipper_fsm_system(
                 tower.pops += stats.layers_per_shred as u32;
             }
 
-            pop_writer.send(BloonPoppedEvent { side: *t_side, cash_gain: 1, pops: 1 });
-            if let Some((child_layer, count)) = strip_normal_layer(b.layer, stats.layers_per_shred) {
-                for c in 0..count {
-                    spawn_writer.send(SpawnBloonEvent {
-                        side: *t_side,
-                        layer: child_layer,
-                        camo: b.camo,
-                        lead: false,
-                        path_progress: (eject_progress - (c as f32) * 10.0).max(0.0),
-                        from_send: b.from_send,
-                        permafrost: b.permafrost,
-                        regrab_immune_tower: Some(t_entity),
-                        regrab_cooldown: 0.3,
-                    });
-                }
-            }
-            commands.entity(b_e).despawn_recursive();
+            emit_shred_pop(
+                &mut commands,
+                b_e,
+                *t_side,
+                &b,
+                b_pos.0,
+                t_entity,
+                strip_normal_layer(b.layer, stats.layers_per_shred),
+                eject_progress,
+                10.0,
+                &mut spawn_writer,
+                &mut pop_writer,
+            );
         }
         chipper.shredding = still_shredding;
 
@@ -310,22 +305,7 @@ pub fn chipper_fsm_system(
                     .first()
                     .map(|s| s.color)
                     .unwrap_or(Color::srgb(0.95, 0.35, 0.35));
-                let exhaust = t_pos.0 - forward * 12.0;
-                let eject_dir = Vec2::new(-forward.x * 38.0, 44.0 + chipper.vib_phase.sin() * 14.0);
-                commands.spawn((
-                    MatchEntity,
-                    ShredParticle {
-                        velocity: eject_dir,
-                        life: 0.35,
-                    },
-                    Sprite {
-                        image: sprites.shred_particle.clone(),
-                        color: p_color,
-                        custom_size: Some(Vec2::splat(10.0)),
-                        ..default()
-                    },
-                    Transform::from_xyz(exhaust.x, exhaust.y, 9.5),
-                ));
+                spawn_shred_particle(&mut commands, &sprites, t_pos.0, forward, chipper.vib_phase, p_color);
             }
         } else {
             t_tf.translation.x = t_pos.0.x;

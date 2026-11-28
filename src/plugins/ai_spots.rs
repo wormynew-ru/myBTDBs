@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use crate::core::state::MapId;
-use crate::core::types::Side;
+use crate::core::types::{Side, TowerType};
 use crate::data::maps_cfg::{waypoints_for_side, ARENA_BOTTOM, ARENA_TOP, DIVIDER_HALF, HALF_W};
 use crate::utils::{is_valid_tower_spot, path_total_length, sample_path};
 
@@ -112,4 +112,23 @@ pub fn find_farm_spot(map_id: MapId, existing_bot_towers: &[Vec2]) -> Option<Vec
         gx += 32.0;
     }
     best.map(|(p, _)| p)
+}
+
+pub fn pick_spot_for_tower(
+    map_id: MapId,
+    existing_bot_towers: &[Vec2],
+    tower_type: TowerType,
+) -> Option<Vec2> {
+    match tower_type {
+        TowerType::Commander
+        | TowerType::SoulEater
+        | TowerType::ScrapCollector
+        | TowerType::Village => find_commander_spot(map_id, existing_bot_towers)
+            .or_else(|| find_bot_spot(map_id, existing_bot_towers, false)),
+        TowerType::Farm | TowerType::MirageGenerator => {
+            find_farm_spot(map_id, existing_bot_towers)
+        }
+        TowerType::SpikeFactory => find_bot_spot(map_id, existing_bot_towers, true),
+        _ => find_bot_spot(map_id, existing_bot_towers, false),
+    }
 }

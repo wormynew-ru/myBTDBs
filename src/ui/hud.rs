@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::core::state::{GameState, MatchSettings};
+use crate::core::state::{GameMode, GameState, MatchSettings};
 use crate::core::types::{Side, SidesResource, TowerType};
 use crate::data::tower_stats::compute_effective_stats;
 use crate::plugins::towers::Tower;
@@ -167,10 +167,11 @@ fn update_hud_texts(
         );
     }
     if let Ok(mut text) = wave_q.get_single_mut() {
+        let mode_tag = if settings.game_mode == GameMode::Turbo { " [TURBO]" } else { "" };
         let pause_tag = if settings.paused { " [PAUSED]" } else { "" };
         **text = format!(
-            "W{} | {}x | Eco {:.1}s{}",
-            sides.wave, settings.speed_mult as u32, sides.eco_timer, pause_tag
+            "W{} | {}x | Eco {:.1}s{}{}",
+            sides.wave, settings.speed_mult as u32, sides.eco_timer, mode_tag, pause_tag
         );
     }
     if let Ok(mut text) = bot_q.get_single_mut() {

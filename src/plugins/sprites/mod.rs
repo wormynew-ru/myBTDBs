@@ -1,3 +1,5 @@
+mod new_towers_px;
+mod tactical_px;
 mod towers_px;
 mod units_px;
 
@@ -38,6 +40,13 @@ pub struct SpriteAssets {
     pub tower_crook_boss: Handle<Image>,
     pub tower_crook_boss_gold: Handle<Image>,
     pub tower_farm: Handle<Image>,
+    pub tower_glue: Handle<Image>,
+    pub tower_glue_liquefier: Handle<Image>,
+    pub tower_soul_eater: Handle<Image>,
+    pub tower_necromancer: Handle<Image>,
+    pub tower_saboteur: Handle<Image>,
+    pub tower_scrap_collector: Handle<Image>,
+    pub tower_mirage_generator: Handle<Image>,
 
     pub unit_jeep: Handle<Image>,
     pub unit_tank: Handle<Image>,
@@ -57,10 +66,17 @@ pub struct SpriteAssets {
     pub proj_dart: Handle<Image>,
     pub proj_bomb: Handle<Image>,
     pub proj_shuriken: Handle<Image>,
+    pub proj_glue: Handle<Image>,
+    pub proj_dark_orb: Handle<Image>,
+    pub overlay_glue: Handle<Image>,
+    pub ghost_bloon: Handle<Image>,
+    pub ghost_knight: Handle<Image>,
+    pub rift_portal: Handle<Image>,
     pub spike_pile: Handle<Image>,
     pub shred_particle: Handle<Image>,
     pub portal_entry: Handle<Image>,
     pub portal_exit: Handle<Image>,
+    pub jam_static: Handle<Image>,
 }
 
 impl SpriteAssets {
@@ -93,6 +109,18 @@ impl SpriteAssets {
                 }
             }
             TowerType::Farm => self.tower_farm.clone(),
+            TowerType::GlueGunner => {
+                if path1 >= 4 {
+                    self.tower_glue_liquefier.clone()
+                } else {
+                    self.tower_glue.clone()
+                }
+            }
+            TowerType::SoulEater => self.tower_soul_eater.clone(),
+            TowerType::Necromancer => self.tower_necromancer.clone(),
+            TowerType::Saboteur => self.tower_saboteur.clone(),
+            TowerType::ScrapCollector => self.tower_scrap_collector.clone(),
+            TowerType::MirageGenerator => self.tower_mirage_generator.clone(),
             TowerType::Bloonchipper => {
                 if path1 >= 4 {
                     self.chipper_p1_4.clone()
@@ -281,4 +309,6 @@ fn generate_pixel_sprites(mut images: ResMut<Assets<Image>>, mut assets: ResMut<
 
     towers_px::populate_tower_and_proj_sprites(&mut images, &mut assets);
     units_px::populate_commander_and_unit_sprites(&mut images, &mut assets);
+    new_towers_px::populate_new_tower_sprites(&mut images, &mut assets);
+    tactical_px::populate_tactical_tower_sprites(&mut images, &mut assets);
 }

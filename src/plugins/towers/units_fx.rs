@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use crate::core::events::{BloonPoppedEvent, SpawnBloonEvent};
 use crate::core::state::MatchSettings;
-use crate::core::types::{BloonLayer, Health, Side, TowerType};
+use crate::core::types::{BloonLayer, GlueStatus, Health, Side, TowerType};
 use crate::data::bloons_cfg::bloon_cfg;
 use crate::plugins::bloons::Bloon;
 
@@ -29,6 +29,7 @@ pub fn apply_multi_layer_damage(
     bloon_entity: Entity,
     side: Side,
     bloon: &Bloon,
+    pos: Vec2,
     hp: &mut Health,
     damage: i32,
     tower: Option<&mut Tower>,
@@ -52,37 +53,44 @@ pub fn apply_multi_layer_damage(
         pop_writer.send(BloonPoppedEvent {
             side,
             cash_gain: bonus_cash,
-            pops: damage as u32,
+            pops: if bloon.is_mirage { 0 } else { damage as u32 },
+            pos,
+            killed: false,
+            from_send: bloon.from_send,
+            is_moab: bloon.layer.is_moab_class(),
+            mirage_flash: None,
         });
         return;
     }
 
     let mut rem = damage - hp.current;
-    let mut total_pops = hp.current as u32;
-    let mut total_cash = 1_i32;
+    let mut total_pops = if bloon.is_mirage { 0 } else { hp.current as u32 };
+    let mut total_cash = if bloon.is_ghost || bloon.is_mirage { 0 } else { 1_i32 };
     hp.current = 0;
     commands.entity(bloon_entity).despawn_recursive();
 
     let mut survivors: Vec<(BloonLayer, u8)> = Vec::new();
-    let mut stack: Vec<(BloonLayer, u8)> = Vec::new();
-    if let Some((cl, cnt)) = bloon_cfg(bloon.layer).child {
-        stack.push((cl, cnt));
-    }
+    if !bloon.is_ghost && !bloon.is_mirage {
+        let mut stack: Vec<(BloonLayer, u8)> = Vec::new();
+        if let Some((cl, cnt)) = bloon_cfg(bloon.layer).child {
+            stack.push((cl, cnt));
+        }
 
-    while let Some((layer, count)) = stack.pop() {
-        let lhp = bloon_cfg(layer).hp;
-        for idx in 0..count {
-            if rem >= lhp && !layer.is_moab_class() {
-                rem -= lhp;
-                total_pops += lhp as u32;
-                total_cash += 1;
-                if let Some((sub_l, sub_c)) = bloon_cfg(layer).child {
-                    stack.push((sub_l, sub_c));
+        while let Some((layer, count)) = stack.pop() {
+            let lhp = bloon_cfg(layer).hp;
+            for idx in 0..count {
+                if rem >= lhp && !layer.is_moab_class() {
+                    rem -= lhp;
+                    total_pops += lhp as u32;
+                    total_cash += 1;
+                    if let Some((sub_l, sub_c)) = bloon_cfg(layer).child {
+                        stack.push((sub_l, sub_c));
+                    }
+                } else {
+                    survivors.push((layer, count - idx));
+                    rem = 0;
+                    break;
                 }
-            } else {
-                survivors.push((layer, count - idx));
-                rem = 0;
-                break;
             }
         }
     }
@@ -90,17 +98,36 @@ pub fn apply_multi_layer_damage(
     let mut bonus_cash = 0;
     if let Some(t) = tower {
         let prev_tens = t.pops / 10;
-        t.pops += total_pops;
+        t.pops += if bloon.is_mirage { 1 } else { total_pops };
         let new_tens = t.pops / 10;
         if t.tower_type == TowerType::CrookBoss && t.path1 >= 4 && new_tens > prev_tens {
             bonus_cash = ((new_tens - prev_tens) as i32) * 15;
         }
     }
+    let mirage_flash = if bloon.is_mirage && bloon.mirage_flash_duration > 0.0 {
+        Some((bloon.mirage_flash_radius, bloon.mirage_flash_duration))
+    } else {
+        None
+    };
     pop_writer.send(BloonPoppedEvent {
         side,
         cash_gain: total_cash + bonus_cash,
         pops: total_pops,
+        pos,
+        killed: true,
+        from_send: bloon.from_send,
+        is_moab: bloon.layer.is_moab_class(),
+        mirage_flash,
     });
+
+    let child_glue = if bloon.glue.soak && bloon.glue.timer > 0.0 {
+        GlueStatus {
+            tick: bloon.glue.corrosive_interval,
+            ..bloon.glue
+        }
+    } else {
+        GlueStatus::default()
+    };
 
     let mut spawn_i = 0_usize;
     for (layer, cnt) in survivors {
@@ -113,6 +140,7 @@ pub fn apply_multi_layer_damage(
                 path_progress: (bloon.path_progress - (spawn_i as f32) * 10.0).max(0.0),
                 from_send: bloon.from_send,
                 permafrost: bloon.permafrost,
+                glue: child_glue,
                 regrab_immune_tower: bloon.regrab_immune_tower,
                 regrab_cooldown: bloon.regrab_cooldown,
             });
